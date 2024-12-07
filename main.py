@@ -23,7 +23,7 @@ def exp_rate(own_player, item):
         "wolf": 80,
         "player": 60,
         "coin": 200,
-        "big_potion": 72,
+        "big_potion": 96,
         "speed_zapper": 36,
         "ring": 36,
         "chest": 0,
@@ -33,6 +33,10 @@ def exp_rate(own_player, item):
     # Adjust experience for player type
     if item["type"] == "player":
         exps["player"] += item["levelling"]["level"] * 10
+
+    # No dead targets
+    if item.get("health") == 0:
+        exps[item["type"]] = 0
 
     # Special cases for chest and power-up
     if item["type"] in ["chest", "power_up"] and own_player["special_equipped"] not in [
@@ -124,7 +128,7 @@ def stock_full(own_player, item):
 
 
 def player_unprepared(own_player, item, game_info):
-    if len(own_player["items"]["big_potions"]) == 0 and own_player["health"] < 85:
+    if len(own_player["items"]["big_potions"]) <= 1 and own_player["health"] < 85:
         if item["type"] != "big_potion":
             return True
     elif (
@@ -197,27 +201,13 @@ def get_best_item(own_player, items, hazards, enemies, players, game_info):
             continue
 
         # Additional checks for items with "attack_damage"
-        if item.get("attack_damage"):
+        if item.get("attack_damage") and item["health"] > 0:
             for hazard in hazards:
                 if (
                     hazard["attack_damage"] > item["health"]
-                    and dist_squared_to(hazard["position"], item["position"]) < 60000
+                    and dist_squared_to(hazard["position"], item["position"]) < 45000
                 ):
                     continue
-
-            if (
-                item["type"] in ["minotaur", "player"]
-                and game_info["time_remaining_s"] > 1680
-                and item["health"] > own_player["attack_damage"] * 3
-            ):
-                continue
-
-            if (
-                item["type"] != "minotaur"
-                and game_info["time_remaining_s"] < 1020
-                and dist_squared_to(item["position"], own_player["position"]) > 240000
-            ):
-                continue
 
             if (
                 item.get("special_equipped") == "freeze"
@@ -432,5 +422,4 @@ app = FastAPI()
 @app.post("/")
 async def receive_level_data(level_data: LevelData):
     moves = play(level_data)
-    print(moves)
     return moves
