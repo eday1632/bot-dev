@@ -153,59 +153,6 @@ func player_unprepared(own_player, item, game_info):
 		return true
 	return false
 
-func easy_points(own_player, items):
-	for item in items:
-		if (item.type in ["ring", "big_potion", "speed_zapper"] and
-			dist_squared_to(item.position, own_player.position) < 50000):
-				return item
-		elif (item.type == "coin" and 
-			dist_squared_to(item.position, own_player.position) < 150000):
-				return item
-	return null
-
-func easy_kill(own_player, enemies, players, hazards):
-	var bomb = false
-	for player in players:
-		for hazard in hazards:
-			if (hazard.attack_damage > player.health and 
-				dist_squared_to(hazard.position, player.position) < 70000):
-					bomb = true
-
-		if (player.health < own_player.attack_damage * 3 and 
-			player.attack_damage * 3 < own_player.health and 
-			dist_squared_to(player.position, own_player.position) < 260000 and 
-			player.health > 0 and
-			not bomb):
-			return player
-
-	bomb = false
-	for enemy in enemies:
-		for hazard in hazards:
-			if (hazard.attack_damage > enemy.health and 
-				dist_squared_to(hazard.position, enemy.position) < 60000):
-					bomb = true
-
-		if (enemy.type == "tiny" and 
-			dist_squared_to(enemy.position, own_player.position) < 17625 and
-			enemy.health > 0 and
-			not bomb):
-			return enemy
-		elif (enemy.health < own_player.attack_damage * 1.5 and 
-			enemy.attack_damage * 1.2 < own_player.health and 
-			dist_squared_to(enemy.position, own_player.position) < 260000 and 
-			enemy.health > 0 and 
-			enemy.type != "tiny" and
-			not bomb):
-			return enemy
-		elif (enemy.health < own_player.attack_damage * 1.5 and 
-			enemy.attack_damage * 1.2 < own_player.health and 
-			dist_squared_to(enemy.position, own_player.position) < 500000 and 
-			enemy.health > 0 and 
-			enemy.type == "minotaur" and
-			not bomb):
-			return enemy
-	return null
-
 func bomb_nearby(item, hazards):
 	for hazard in hazards:
 		if (hazard.type == "bomb" and 
