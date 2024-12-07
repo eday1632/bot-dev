@@ -3,15 +3,15 @@ from pydantic import BaseModel
 import random
 
 
-def dist_squared_to(a, b):
+def dist_squared_to(a: dict, b: dict) -> float:
     return (a["x"] - b["x"]) ** 2 + (a["y"] - b["y"]) ** 2
 
 
-def slope(a, b):
+def slope(a: dict, b: dict) -> float:
     return (b["y"] - a["y"]) / (b["x"] - a["x"])
 
 
-def exp_rate(own_player, item):
+def exp_rate(own_player: dict, item: dict) -> float:
     # Calculate the player's speed
     my_speed = 15000 + own_player["levelling"]["speed"] * 500  # TODO: add dash?
 
