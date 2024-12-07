@@ -55,7 +55,7 @@ def exp_rate(own_player, item):
     travel_time = distance / my_speed
     kill_time = 0
 
-    if hasattr(item, "health"):  # Check if the item has a health attribute
+    if item.get("health"):  # Check if the item has a health attribute
         kill_time = (
             item["health"] / own_player["attack_damage"]
         ) * 0.5  # Assuming attack cooldown
@@ -105,7 +105,7 @@ def apply_skill_points(own_player, moves):
 
 
 def losing_battle(own_player, item):
-    if hasattr(item, "attack_damage") and item["attack_damage"] > own_player["health"]:
+    if item.get("attack_damage") and item["attack_damage"] > own_player["health"]:
         return True
     return False
 
@@ -183,7 +183,7 @@ def get_best_item(own_player, items, hazards, enemies, players, game_info):
 
     for item in items:
         # Skip items with zero or negative health
-        if hasattr(item, "health") and item["health"] <= 0:
+        if item.get("health") and item["health"] <= 0:
             continue
 
         # Skip items based on various conditions
@@ -197,7 +197,7 @@ def get_best_item(own_player, items, hazards, enemies, players, game_info):
             continue
 
         # Additional checks for items with "attack_damage"
-        if hasattr(item, "attack_damage"):
+        if item.get("attack_damage"):
             for hazard in hazards:
                 if (
                     hazard["attack_damage"] > item["health"]
@@ -220,7 +220,7 @@ def get_best_item(own_player, items, hazards, enemies, players, game_info):
                 continue
 
             if (
-                item["special_equipped"] == "freeze"
+                item.get("special_equipped") == "freeze"
                 and item["health"] > own_player["attack_damage"] * 3
                 and len(own_player["items"]["big_potions"]) == 0
             ):
@@ -253,6 +253,10 @@ class LevelData(BaseModel):
     own_player: dict
 
 
+CURRENT_EXP_RATE = 0
+CURRENT_MOVE_LIST = ()
+
+
 def play(level_data):
     moves = []
     own_player = level_data.own_player
@@ -271,11 +275,10 @@ def play(level_data):
     # Apply skill points
     moves = apply_skill_points(own_player, moves)
 
-    # Log information periodically
-    if game_info["time_remaining_s"] % 15 == 0:
-        print(
-            f"Score rate: {own_player['score'] / (1800 - game_info['time_remaining_s'])}"
-        )
+    # Log exp rate periodically
+    if game_info["time_remaining_s"] % 5 == 0:
+        exp_rate = own_player["score"] / (1800 - game_info["time_remaining_s"])
+        print(f"Score rate: {exp_rate}")
 
     target = get_best_item(
         own_player, potential_targets, hazards, enemies, players, game_info
@@ -289,7 +292,7 @@ def play(level_data):
     moves.append("dash")
 
     if (
-        hasattr(target, "health")
+        target.get("health")
         and dist_squared_to(own_player["position"], target["position"]) < 15625
         and target["health"] > 0
     ):
