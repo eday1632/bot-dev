@@ -1,5 +1,5 @@
 import unittest
-from main import peripheral_danger
+from main import peripheral_danger, dist_squared_to
 
 class TestPeripheralDanger(unittest.TestCase):
     def setUp(self):
@@ -51,6 +51,58 @@ class TestPeripheralDanger(unittest.TestCase):
         self.hazards = [{"position": {"x": 50 + int(60000 ** 0.5), "y": 50}, "attack_damage": 50}]
         result = peripheral_danger(self.own_player, self.item, self.enemies, self.players, self.hazards)
         self.assertFalse(result, "Threats at the edge of the radius should not count as danger.")
+
+
+class TestDistSquaredTo(unittest.TestCase):
+    def test_zero_distance(self):
+        """Test when both points are the same."""
+        point_a = {"x": 0, "y": 0}
+        point_b = {"x": 0, "y": 0}
+        self.assertEqual(dist_squared_to(point_a, point_b), 0)
+
+    def test_positive_coordinates(self):
+        """Test with points in the first quadrant."""
+        point_a = {"x": 3, "y": 4}
+        point_b = {"x": 0, "y": 0}
+        self.assertEqual(dist_squared_to(point_a, point_b), 25)
+
+    def test_negative_coordinates(self):
+        """Test with points in the third quadrant."""
+        point_a = {"x": -3, "y": -4}
+        point_b = {"x": 0, "y": 0}
+        self.assertEqual(dist_squared_to(point_a, point_b), 25)
+
+    def test_mixed_coordinates(self):
+        """Test with points in different quadrants."""
+        point_a = {"x": -3, "y": 4}
+        point_b = {"x": 3, "y": -4}
+        self.assertEqual(dist_squared_to(point_a, point_b), 100)
+
+    def test_large_coordinates(self):
+        """Test with very large coordinates."""
+        point_a = {"x": 100000, "y": 100000}
+        point_b = {"x": 0, "y": 0}
+        self.assertEqual(dist_squared_to(point_a, point_b), 20000000000)
+
+    def test_decimal_coordinates(self):
+        """Test with decimal values."""
+        point_a = {"x": 1.5, "y": 2.5}
+        point_b = {"x": 0, "y": 0}
+        self.assertAlmostEqual(dist_squared_to(point_a, point_b), 8.5)
+
+    def test_invalid_input_missing_keys(self):
+        """Test with dictionaries missing keys."""
+        point_a = {"x": 1}
+        point_b = {"x": 0, "y": 0}
+        with self.assertRaises(KeyError):
+            dist_squared_to(point_a, point_b)
+
+    def test_invalid_input_non_dict(self):
+        """Test with non-dictionary input."""
+        point_a = [1, 2]
+        point_b = {"x": 0, "y": 0}
+        with self.assertRaises(TypeError):
+            dist_squared_to(point_a, point_b)
 
 if __name__ == "__main__":
     unittest.main()
