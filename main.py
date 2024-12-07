@@ -31,12 +31,8 @@ def exp_rate(own_player, item):
     }
 
     # Adjust experience for player type
-    if item["type"] == "player":
+    if item["type"] == "player" and item["type"]["health"] > 0:
         exps["player"] += item["levelling"]["level"] * 10
-
-    # No dead targets
-    if item.get("health") == 0:
-        exps[item["type"]] = 0
 
     # Special cases for chest and power-up
     if item["type"] in ["chest", "power_up"] and own_player["special_equipped"] not in [
@@ -68,26 +64,28 @@ def exp_rate(own_player, item):
     return exps[item["type"]] / (travel_time + kill_time)
 
 
-def peripheral_danger(own_player, item, enemies, players, hazards):
+def peripheral_danger(
+    own_player: dict, item: dict, enemies: list, players: list, hazards: list
+) -> bool:
     total_health = own_player["health"] + len(own_player["items"]["big_potions"]) * 100
     total_danger = 0
 
     for enemy in enemies:
-        if dist_squared_to(item["position"], enemy["position"]) < 120000:
+        if dist_squared_to(item["position"], enemy["position"]) < 100000:
             total_danger += enemy["attack_damage"]
 
     for player in players:
-        if dist_squared_to(item["position"], player["position"]) < 120000:
+        if dist_squared_to(item["position"], player["position"]) < 100000:
             total_danger += player["attack_damage"]
 
     for hazard in hazards:
-        if dist_squared_to(item["position"], hazard["position"]) < 80000:
+        if dist_squared_to(item["position"], hazard["position"]) < 60000:
             total_danger += hazard["attack_damage"]
 
     return total_danger > total_health
 
 
-def apply_skill_points(own_player, moves):
+def apply_skill_points(own_player: dict, moves: list) -> list:
     max_points = 20
 
     if own_player["levelling"]["available_skill_points"] > 0:
@@ -201,7 +199,7 @@ def get_best_item(own_player, items, hazards, enemies, players, game_info):
             continue
 
         # Additional checks for items with "attack_damage"
-        if item.get("attack_damage") and item["health"] > 0:
+        if item.get("attack_damage"):
             for hazard in hazards:
                 if (
                     hazard["attack_damage"] > item["health"]
