@@ -23,16 +23,20 @@ def exp_rate(own_player: dict, item: dict) -> float:
         "wolf": 80,
         "player": 60,
         "coin": 200,
-        "big_potion": 96,
-        "speed_zapper": 36,
-        "ring": 36,
+        "big_potion": 100,
+        "speed_zapper": 50,
+        "ring": 50,
         "chest": 0,
         "power_up": 0,
     }
 
     # Adjust experience for player type
-    if item["type"] == "player" and item["type"]["health"] > 0:
+    if item["type"] == "player" and item["health"] > 0:
         exps["player"] += item["levelling"]["level"] * 10
+
+    # No dead things
+    if item.get("attack_damage") is not None and item["health"] <= 0:
+        return 0
 
     # Special cases for chest and power-up
     if item["type"] in ["chest", "power_up"] and own_player["special_equipped"] not in [
@@ -47,6 +51,7 @@ def exp_rate(own_player: dict, item: dict) -> float:
         item["type"] == "tiny"
         and len(own_player["items"]["speed_zappers"]) == 0
         and not item["is_zapped"]
+        and not item["is_frozen"]
     ):
         exps["tiny"] = 60
 
@@ -55,7 +60,9 @@ def exp_rate(own_player: dict, item: dict) -> float:
     travel_time = distance / my_speed
     kill_time = 0
 
-    if item.get("health"):  # Check if the item has a health attribute
+    if item.get("health") is not None:  # Check if the item has a health attribute
+        if item["type"] == "player":
+            item["health"] += 150  # Assume they have an average of 1.5 potions
         kill_time = (
             item["health"] / own_player["attack_damage"]
         ) * 0.5  # Assuming attack cooldown
@@ -106,18 +113,18 @@ def apply_skill_points(own_player: dict, moves: list) -> list:
     return moves
 
 
-def losing_battle(own_player, item):
-    if item.get("attack_damage") and item["attack_damage"] > own_player["health"]:
+def losing_battle(own_player: dict, item: dict) -> bool:
+    if item.get("attack_damage") is not None and item["attack_damage"] > own_player["health"]:
         return True
     return False
 
 
-def stock_full(own_player, item):
-    if item["type"] == "ring" and len(own_player["items"]["rings"]) >= 2:
+def stock_full(own_player: dict, item: dict) -> bool:
+    if item["type"] == "ring" and len(own_player["items"]["rings"]) >= 4:
         return True
     if (
         item["type"] == "speed_zapper"
-        and len(own_player["items"]["speed_zappers"]) >= 2
+        and len(own_player["items"]["speed_zappers"]) >= 1
     ):
         return True
     if item["type"] == "big_potion" and len(own_player["items"]["big_potions"]) >= 5:
@@ -125,8 +132,8 @@ def stock_full(own_player, item):
     return False
 
 
-def player_unprepared(own_player, item, game_info):
-    if len(own_player["items"]["big_potions"]) <= 1 and own_player["health"] < 85:
+def player_unprepared(own_player: dict, item: dict) -> bool:
+    if len(own_player["items"]["big_potions"]) < 1 and own_player["health"] < 85:
         if item["type"] != "big_potion":
             return True
     elif (
@@ -139,7 +146,7 @@ def player_unprepared(own_player, item, game_info):
     return False
 
 
-def bomb_nearby(item, hazards):
+def bomb_nearby(item: dict, hazards: list) -> dict:
     for hazard in hazards:
         if (
             hazard["type"] == "bomb"
@@ -147,7 +154,7 @@ def bomb_nearby(item, hazards):
             and hazard["status"] != "idle"
         ):
             return hazard
-    return None
+    return {}
 
 
 def total_danger(own_player, players, enemies, hazards):
@@ -185,11 +192,11 @@ def get_best_item(own_player, items, hazards, enemies, players, game_info):
 
     for item in items:
         # Skip items with zero or negative health
-        if item.get("health") and item["health"] <= 0:
+        if item.get("health") is not None and item["health"] <= 0:
             continue
 
         # Skip items based on various conditions
-        if player_unprepared(own_player, item, game_info):
+        if player_unprepared(own_player, item):
             continue
         if losing_battle(own_player, item):
             continue
@@ -199,7 +206,7 @@ def get_best_item(own_player, items, hazards, enemies, players, game_info):
             continue
 
         # Additional checks for items with "attack_damage"
-        if item.get("attack_damage"):
+        if item.get("attack_damage") is not None:
             for hazard in hazards:
                 if (
                     hazard["attack_damage"] > item["health"]
@@ -280,7 +287,7 @@ def play(level_data):
     moves.append("dash")
 
     if (
-        target.get("health")
+        target.get("health") is not None
         and dist_squared_to(own_player["position"], target["position"]) < 15625
         and target["health"] > 0
     ):
@@ -326,39 +333,132 @@ def play(level_data):
                 moves.append("shield")
                 if own_player["special_equipped"] != "bomb":
                     moves.append("special")
-                elif (
-                    own_player["special_equipped"] == "bomb"
-                    and own_player["is_shield_ready"]
-                    and not bomb
-                    and own_player["health"] > own_player["attack_damage"] * 2.5
-                ):
-                    moves.append("shield")
-                    moves.append("special")
                 break
         target["position"]["x"] += random.randint(-400, 400)
         target["position"]["y"] += random.randint(-400, 400)
 
     # Handle bomb-related logic
-    bomb_distance = 160000
-    if (
-        own_player["special_equipped"] == "bomb"
-        and len(own_player["items"]["big_potions"]) > 0
-    ):
+    # if no collisions drop bomb
+    bomb_distance = 120000
+    if own_player["special_equipped"] == "bomb":
+        # Check for enemies
         for enemy in enemies:
             if (
-                dist_squared_to(enemy["position"], own_player["position"])
-                < bomb_distance
-                and dist_squared_to(enemy["position"], own_player["position"]) > 50000
+                target["position"]["x"] > own_player["position"]["x"]
+                and own_player["position"]["x"] > enemy["position"]["x"]
+                and target["position"]["y"] > own_player["position"]["y"]
+                and own_player["position"]["y"] > enemy["position"]["y"]
+                and 50000 < dist_squared_to(enemy["position"], own_player["position"]) < bomb_distance
                 and enemy["health"] > 0
+                and target["id"] != enemy["id"]
             ):
                 moves.append("special")
                 break
+
+            if (
+                target["position"]["x"] < own_player["position"]["x"]
+                and own_player["position"]["x"] < enemy["position"]["x"]
+                and target["position"]["y"] < own_player["position"]["y"]
+                and own_player["position"]["y"] < enemy["position"]["y"]
+                and 50000 < dist_squared_to(enemy["position"], own_player["position"]) < bomb_distance
+                and enemy["health"] > 0
+                and target["id"] != enemy["id"]
+            ):
+                moves.append("special")
+                break
+
+            if (
+                target["position"]["x"] < own_player["position"]["x"]
+                and own_player["position"]["x"] < enemy["position"]["x"]
+                and target["position"]["y"] > own_player["position"]["y"]
+                and own_player["position"]["y"] > enemy["position"]["y"]
+                and 50000 < dist_squared_to(enemy["position"], own_player["position"]) < bomb_distance
+                and enemy["health"] > 0
+                and target["id"] != enemy["id"]
+            ):
+                moves.append("special")
+                break
+
+            if (
+                target["position"]["x"] < own_player["position"]["x"]
+                and own_player["position"]["x"] < enemy["position"]["x"]
+                and target["position"]["y"] > own_player["position"]["y"]
+                and own_player["position"]["y"] > enemy["position"]["y"]
+                and 50000 < dist_squared_to(enemy["position"], own_player["position"]) < bomb_distance
+                and enemy["health"] > 0
+                and target["id"] != enemy["id"]
+            ):
+                moves.append("special")
+                break
+
+            if (
+                dist_squared_to(enemy["position"], own_player["position"]) < 30000
+                and own_player["is_shield_ready"]
+                and not bomb
+                and enemy["health"] > 0
+                and own_player["health"] > own_player["attack_damage"] * 2.5
+                and target["id"] == enemy["id"]
+            ):
+                moves.append("special")
+                break
+
+        # Check for players
         for player in players:
             if (
-                dist_squared_to(player["position"], own_player["position"])
-                < bomb_distance
-                and dist_squared_to(player["position"], own_player["position"]) > 50000
+                target["position"]["x"] > own_player["position"]["x"]
+                and own_player["position"]["x"] > player["position"]["x"]
+                and target["position"]["y"] > own_player["position"]["y"]
+                and own_player["position"]["y"] > player["position"]["y"]
+                and 50000 < dist_squared_to(player["position"], own_player["position"]) < bomb_distance
                 and player["health"] > 0
+                and target["id"] != player["id"]
+            ):
+                moves.append("special")
+                break
+
+            if (
+                target["position"]["x"] < own_player["position"]["x"]
+                and own_player["position"]["x"] < player["position"]["x"]
+                and target["position"]["y"] < own_player["position"]["y"]
+                and own_player["position"]["y"] < player["position"]["y"]
+                and 50000 < dist_squared_to(player["position"], own_player["position"]) < bomb_distance
+                and player["health"] > 0
+                and target["id"] != player["id"]
+            ):
+                moves.append("special")
+                break
+
+            if (
+                target["position"]["x"] < own_player["position"]["x"]
+                and own_player["position"]["x"] < player["position"]["x"]
+                and target["position"]["y"] > own_player["position"]["y"]
+                and own_player["position"]["y"] > player["position"]["y"]
+                and 50000 < dist_squared_to(player["position"], own_player["position"]) < bomb_distance
+                and player["health"] > 0
+                and target["id"] != player["id"]
+            ):
+                moves.append("special")
+                break
+
+            if (
+                target["position"]["x"] < own_player["position"]["x"]
+                and own_player["position"]["x"] < player["position"]["x"]
+                and target["position"]["y"] > own_player["position"]["y"]
+                and own_player["position"]["y"] > player["position"]["y"]
+                and 50000 < dist_squared_to(player["position"], own_player["position"]) < bomb_distance
+                and player["health"] > 0
+                and target["id"] != player["id"]
+            ):
+                moves.append("special")
+                break
+
+            if (
+                dist_squared_to(player["position"], own_player["position"]) < 30000
+                and own_player["is_shield_ready"]
+                and not bomb
+                and player["health"] > 0
+                and own_player["health"] > own_player["attack_damage"] * 2.5
+                and target["id"] == player["id"]
             ):
                 moves.append("special")
                 break
@@ -366,7 +466,7 @@ def play(level_data):
     elif own_player["special_equipped"] == "freeze":
         if (
             target["type"] in ["ghoul", "tiny", "minotaur", "player"]
-            and not getattr(target, "is_frozen", False)
+            and not target["is_frozen"]
             and dist_squared_to(target["position"], own_player["position"])
             < zap_distance
             and not own_player["shield_raised"]
