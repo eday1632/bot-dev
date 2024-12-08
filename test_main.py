@@ -1,5 +1,5 @@
 import unittest
-from main import peripheral_danger, dist_squared_to, apply_skill_points
+from main import peripheral_danger, dist_squared_to, apply_skill_points, losing_battle
 
 
 class TestPeripheralDanger(unittest.TestCase):
@@ -261,6 +261,50 @@ class TestApplySkillPoints(unittest.TestCase):
             2,
             "Multiple skill points should allow multiple moves to be added.",
         )
+
+
+class TestLosingBattle(unittest.TestCase):
+    def test_losing_battle_true(self):
+        """Test when the item's attack damage exceeds the player's health."""
+        own_player = {"health": 50}
+        item = {"attack_damage": 60}
+        result = losing_battle(own_player, item)
+        self.assertTrue(result, "Should return True when item attack damage is greater than player health.")
+
+    def test_losing_battle_false(self):
+        """Test when the item's attack damage does not exceed the player's health."""
+        own_player = {"health": 100}
+        item = {"attack_damage": 60}
+        result = losing_battle(own_player, item)
+        self.assertFalse(result, "Should return False when item attack damage is less than or equal to player health.")
+
+    def test_no_attack_damage_key(self):
+        """Test when the item does not have an attack_damage key."""
+        own_player = {"health": 100}
+        item = {"name": "Sword"}
+        result = losing_battle(own_player, item)
+        self.assertFalse(result, "Should return False when attack_damage key is missing in item.")
+
+    def test_none_attack_damage(self):
+        """Test when the attack_damage value is None."""
+        own_player = {"health": 100}
+        item = {"attack_damage": None}
+        result = losing_battle(own_player, item)
+        self.assertFalse(result, "Should return False when attack_damage is None.")
+
+    def test_exactly_equal_damage_and_health(self):
+        """Test when the item's attack damage is exactly equal to the player's health."""
+        own_player = {"health": 100}
+        item = {"attack_damage": 100}
+        result = losing_battle(own_player, item)
+        self.assertTrue(result, "Should return True when item attack damage equals player health.")
+
+    def test_missing_health_key(self):
+        """Test when the player does not have a health key."""
+        own_player = {"mana": 50}
+        item = {"attack_damage": 50}
+        with self.assertRaises(KeyError, msg="Should raise KeyError if own_player does not have a health key."):
+            losing_battle(own_player, item)
 
 
 if __name__ == "__main__":

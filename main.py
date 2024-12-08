@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import random
 
+CURRENT_EXP_RATE = 0
+
 
 def dist_squared_to(a: dict, b: dict) -> float:
     return (a["x"] - b["x"]) ** 2 + (a["y"] - b["y"]) ** 2
@@ -114,7 +116,10 @@ def apply_skill_points(own_player: dict, moves: list) -> list:
 
 
 def losing_battle(own_player: dict, item: dict) -> bool:
-    if item.get("attack_damage") is not None and item["attack_damage"] > own_player["health"]:
+    if (
+        item.get("attack_damage") is not None
+        and item["attack_damage"] >= own_player["health"]
+    ):
         return True
     return False
 
@@ -157,7 +162,7 @@ def bomb_nearby(item: dict, hazards: list) -> dict:
     return {}
 
 
-def total_danger(own_player, players, enemies, hazards):
+def total_danger(own_player: dict, players: list, enemies: list, hazards: list) -> int:
     total_danger = 0
 
     for player in players:
@@ -186,7 +191,9 @@ def total_danger(own_player, players, enemies, hazards):
     return total_danger
 
 
-def get_best_item(own_player, items, hazards, enemies, players, game_info):
+def get_best_item(
+    own_player: dict, items: list, hazards: list, enemies: list, players: list
+) -> dict:
     max_exp = float("-inf")
     target = None
 
@@ -248,12 +255,9 @@ class LevelData(BaseModel):
     own_player: dict
 
 
-CURRENT_EXP_RATE = 0
-CURRENT_MOVE_LIST = ()
-
-
-def play(level_data):
+def play(level_data: LevelData):
     moves = []
+    global CURRENT_EXP_RATE
     own_player = level_data.own_player
     enemies = level_data.enemies
     players = level_data.players
@@ -273,11 +277,15 @@ def play(level_data):
     # Log exp rate periodically
     if game_info["time_remaining_s"] % 5 == 0:
         exp_rate = own_player["score"] / (1800 - game_info["time_remaining_s"])
-        print(f"Score rate: {exp_rate}")
+        if CURRENT_EXP_RATE != exp_rate:
+            CURRENT_EXP_RATE = exp_rate
+            print(f"Score rate: {exp_rate}")
 
-    target = get_best_item(
-        own_player, potential_targets, hazards, enemies, players, game_info
-    )
+    target = get_best_item(own_player, potential_targets, hazards, enemies, players)
+    if not target:
+        print("No target found")
+        return moves
+
     bomb = bomb_nearby(own_player, hazards)
     total_danger_value = total_danger(own_player, players, enemies, hazards)
 
@@ -348,7 +356,9 @@ def play(level_data):
                 and own_player["position"]["x"] > enemy["position"]["x"]
                 and target["position"]["y"] > own_player["position"]["y"]
                 and own_player["position"]["y"] > enemy["position"]["y"]
-                and 50000 < dist_squared_to(enemy["position"], own_player["position"]) < bomb_distance
+                and 50000
+                < dist_squared_to(enemy["position"], own_player["position"])
+                < bomb_distance
                 and enemy["health"] > 0
                 and target["id"] != enemy["id"]
             ):
@@ -360,7 +370,9 @@ def play(level_data):
                 and own_player["position"]["x"] < enemy["position"]["x"]
                 and target["position"]["y"] < own_player["position"]["y"]
                 and own_player["position"]["y"] < enemy["position"]["y"]
-                and 50000 < dist_squared_to(enemy["position"], own_player["position"]) < bomb_distance
+                and 50000
+                < dist_squared_to(enemy["position"], own_player["position"])
+                < bomb_distance
                 and enemy["health"] > 0
                 and target["id"] != enemy["id"]
             ):
@@ -372,7 +384,9 @@ def play(level_data):
                 and own_player["position"]["x"] < enemy["position"]["x"]
                 and target["position"]["y"] > own_player["position"]["y"]
                 and own_player["position"]["y"] > enemy["position"]["y"]
-                and 50000 < dist_squared_to(enemy["position"], own_player["position"]) < bomb_distance
+                and 50000
+                < dist_squared_to(enemy["position"], own_player["position"])
+                < bomb_distance
                 and enemy["health"] > 0
                 and target["id"] != enemy["id"]
             ):
@@ -384,7 +398,9 @@ def play(level_data):
                 and own_player["position"]["x"] < enemy["position"]["x"]
                 and target["position"]["y"] > own_player["position"]["y"]
                 and own_player["position"]["y"] > enemy["position"]["y"]
-                and 50000 < dist_squared_to(enemy["position"], own_player["position"]) < bomb_distance
+                and 50000
+                < dist_squared_to(enemy["position"], own_player["position"])
+                < bomb_distance
                 and enemy["health"] > 0
                 and target["id"] != enemy["id"]
             ):
@@ -409,7 +425,9 @@ def play(level_data):
                 and own_player["position"]["x"] > player["position"]["x"]
                 and target["position"]["y"] > own_player["position"]["y"]
                 and own_player["position"]["y"] > player["position"]["y"]
-                and 50000 < dist_squared_to(player["position"], own_player["position"]) < bomb_distance
+                and 50000
+                < dist_squared_to(player["position"], own_player["position"])
+                < bomb_distance
                 and player["health"] > 0
                 and target["id"] != player["id"]
             ):
@@ -421,7 +439,9 @@ def play(level_data):
                 and own_player["position"]["x"] < player["position"]["x"]
                 and target["position"]["y"] < own_player["position"]["y"]
                 and own_player["position"]["y"] < player["position"]["y"]
-                and 50000 < dist_squared_to(player["position"], own_player["position"]) < bomb_distance
+                and 50000
+                < dist_squared_to(player["position"], own_player["position"])
+                < bomb_distance
                 and player["health"] > 0
                 and target["id"] != player["id"]
             ):
@@ -433,7 +453,9 @@ def play(level_data):
                 and own_player["position"]["x"] < player["position"]["x"]
                 and target["position"]["y"] > own_player["position"]["y"]
                 and own_player["position"]["y"] > player["position"]["y"]
-                and 50000 < dist_squared_to(player["position"], own_player["position"]) < bomb_distance
+                and 50000
+                < dist_squared_to(player["position"], own_player["position"])
+                < bomb_distance
                 and player["health"] > 0
                 and target["id"] != player["id"]
             ):
@@ -445,7 +467,9 @@ def play(level_data):
                 and own_player["position"]["x"] < player["position"]["x"]
                 and target["position"]["y"] > own_player["position"]["y"]
                 and own_player["position"]["y"] > player["position"]["y"]
-                and 50000 < dist_squared_to(player["position"], own_player["position"]) < bomb_distance
+                and 50000
+                < dist_squared_to(player["position"], own_player["position"])
+                < bomb_distance
                 and player["health"] > 0
                 and target["id"] != player["id"]
             ):
@@ -506,11 +530,7 @@ def play(level_data):
         )
 
     # Final move to the target
-    if target:
-        moves.append({"move_to": target["position"]})
-    else:
-        print("No target found")
-
+    moves.append({"move_to": target["position"]})
     return dedupe_moves(moves)
 
 
