@@ -237,13 +237,33 @@ def get_best_item(
     return target
 
 
-def dedupe_moves(moves: list):
+def dedupe_moves(moves: list) -> list:
     # Remove duplicate moves
     deduped_moves = []
     for move in moves:
         if move not in deduped_moves:
             deduped_moves.append(move)
     return deduped_moves
+
+
+def print_exp_rate(game_info: dict, own_player: dict) -> None:
+    # Log exp rate periodically
+    global CURRENT_EXP_RATE
+    if game_info["time_remaining_s"] % 5 == 0:
+        exp_rate = own_player["score"] / (1800 - game_info["time_remaining_s"])
+        if CURRENT_EXP_RATE != exp_rate:
+            CURRENT_EXP_RATE = exp_rate
+            print(f"Score rate: {CURRENT_EXP_RATE}")
+
+
+def assess_attack(own_player, target, moves):
+    if (
+        target.get("health") is not None
+        and target["health"] > 0
+        and dist_squared_to(own_player["position"], target["position"]) < 15625
+    ):
+        moves.append("attack")
+    return moves
 
 
 class LevelData(BaseModel):
@@ -257,7 +277,6 @@ class LevelData(BaseModel):
 
 def play(level_data: LevelData):
     moves = []
-    global CURRENT_EXP_RATE
     own_player = level_data.own_player
     enemies = level_data.enemies
     players = level_data.players
@@ -271,35 +290,24 @@ def play(level_data: LevelData):
     potential_targets.extend(enemies)
     potential_targets.extend(players)
 
+    print_exp_rate(game_info, own_player)
+
     # Apply skill points
     moves = apply_skill_points(own_player, moves)
-
-    # Log exp rate periodically
-    if game_info["time_remaining_s"] % 5 == 0:
-        exp_rate = own_player["score"] / (1800 - game_info["time_remaining_s"])
-        if CURRENT_EXP_RATE != exp_rate:
-            CURRENT_EXP_RATE = exp_rate
-            print(f"Score rate: {CURRENT_EXP_RATE}")
 
     target = get_best_item(own_player, potential_targets, hazards, enemies, players)
     if not target:
         print("No target found")
         return moves
 
-    bomb = bomb_nearby(own_player, hazards)
-    total_danger_value = total_danger(own_player, players, enemies, hazards)
-
-    # Add moves based on the target and conditions
-    if target:
-        moves.append({"speak": target["type"]})
+    moves.append({"speak": target["type"]})
     moves.append("dash")
 
-    if (
-        target.get("health") is not None
-        and dist_squared_to(own_player["position"], target["position"]) < 15625
-        and target["health"] > 0
-    ):
-        moves.append("attack")
+    bomb = bomb_nearby(own_player, hazards)
+
+    total_danger_value = total_danger(own_player, players, enemies, hazards)
+
+    moves = assess_attack(own_player, target, moves)
 
     # Handle health and potion usage
     if (

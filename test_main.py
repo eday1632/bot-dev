@@ -1,11 +1,20 @@
 import unittest
+from unittest.mock import patch
+
 from main import (
     peripheral_danger,
     dist_squared_to,
     apply_skill_points,
     losing_battle,
     stock_full,
+    dedupe_moves,
+    bomb_nearby,
+    print_exp_rate,
+    assess_attack
 )
+
+# Mock global variable
+CURRENT_EXP_RATE = None
 
 
 class TestPeripheralDanger(unittest.TestCase):
@@ -366,6 +375,202 @@ class TestStockFullFunction(unittest.TestCase):
         own_player = {"items": {"rings": [], "speed_zappers": [], "big_potions": []}}
         item = {"type": "unknown_item"}
         self.assertFalse(stock_full(own_player, item))
+
+
+class TestDedupeMovesFunction(unittest.TestCase):
+    def test_no_duplicates(self):
+        # Case where there are no duplicates
+        moves = ["move1", "move2", "move3"]
+        self.assertEqual(dedupe_moves(moves), ["move1", "move2", "move3"])
+
+    def test_with_duplicates(self):
+        # Case where there are duplicates
+        moves = ["move1", "move2", "move1", "move3", "move2"]
+        self.assertEqual(dedupe_moves(moves), ["move1", "move2", "move3"])
+
+    def test_empty_list(self):
+        # Case with an empty list
+        moves = []
+        self.assertEqual(dedupe_moves(moves), [])
+
+    def test_all_duplicates(self):
+        # Case where all elements are duplicates
+        moves = ["move1", "move1", "move1"]
+        self.assertEqual(dedupe_moves(moves), ["move1"])
+
+    def test_single_element_list(self):
+        # Case with a single-element list
+        moves = ["move1"]
+        self.assertEqual(dedupe_moves(moves), ["move1"])
+
+    def test_mixed_data_types(self):
+        # Case with mixed data types
+        moves = ["move1", 2, "move1", 2, 3.5, "move2", 3.5]
+        self.assertEqual(dedupe_moves(moves), ["move1", 2, 3.5, "move2"])
+
+
+class TestBombNearbyFunction(unittest.TestCase):
+    def test_bomb_nearby(self):
+        # Case where a bomb is nearby and active
+        item = {"position": {"x": 100, "y": 100}}
+        hazards = [
+            {"type": "bomb", "position": {"x": 110, "y": 110}, "status": "active"},
+            {"type": "bomb", "position": {"x": 200, "y": 200}, "status": "idle"},
+        ]
+        self.assertEqual(
+            bomb_nearby(item, hazards),
+            {"type": "bomb", "position": {"x": 110, "y": 110}, "status": "active"},
+        )
+
+    def test_no_bomb_nearby(self):
+        # Case where no bomb is nearby
+        item = {"position": {"x": 100, "y": 100}}
+        hazards = [
+            {"type": "bomb", "position": {"x": 300, "y": 300}, "status": "active"},
+            {"type": "bomb", "position": {"x": 400, "y": 400}, "status": "active"},
+        ]
+        self.assertEqual(bomb_nearby(item, hazards), {})
+
+    def test_bomb_is_idle(self):
+        # Case where bomb is nearby but idle
+        item = {"position": {"x": 100, "y": 100}}
+        hazards = [{"type": "bomb", "position": {"x": 110, "y": 110}, "status": "idle"}]
+        self.assertEqual(bomb_nearby(item, hazards), {})
+
+    def test_no_hazards(self):
+        # Case with an empty hazard list
+        item = {"position": {"x": 100, "y": 100}}
+        hazards = []
+        self.assertEqual(bomb_nearby(item, hazards), {})
+
+    def test_other_hazard_type(self):
+        # Case where hazards are not bombs
+        item = {"position": {"x": 100, "y": 100}}
+        hazards = [
+            {"type": "icicle", "position": {"x": 110, "y": 110}, "status": "active"},
+            {"type": "shockwave", "position": {"x": 120, "y": 120}, "status": "active"},
+        ]
+        self.assertEqual(bomb_nearby(item, hazards), {})
+
+    def test_multiple_nearby_bombs(self):
+        # Case with multiple nearby bombs, should return the first one
+        item = {"position": {"x": 100, "y": 100}}
+        hazards = [
+            {"type": "bomb", "position": {"x": 110, "y": 110}, "status": "active"},
+            {"type": "bomb", "position": {"x": 120, "y": 120}, "status": "active"},
+        ]
+        self.assertEqual(
+            bomb_nearby(item, hazards),
+            {"type": "bomb", "position": {"x": 110, "y": 110}, "status": "active"},
+        )
+
+
+def set_current_exp_rate(value):
+    global CURRENT_EXP_RATE
+    CURRENT_EXP_RATE = value
+
+
+class TestPrintExpRateFunction(unittest.TestCase):
+    def setUp(self):
+        # Reset the global variable before each test
+        set_current_exp_rate(None)
+
+    def test_print_on_change(self):
+        # Test that the function prints when the exp rate changes
+        game_info = {"time_remaining_s": 5}
+        own_player = {"score": 100}
+
+        with patch("builtins.print") as mock_print:
+            print_exp_rate(game_info, own_player)
+            mock_print.assert_called_once_with("Score rate: 0.06")
+
+    def test_no_print_no_change(self):
+        # Test that the function does not print if exp rate hasn't changed
+        game_info = {"time_remaining_s": 10}
+        own_player = {"score": 100}
+        set_current_exp_rate(0.06)
+
+        with patch("builtins.print") as mock_print:
+            print_exp_rate(game_info, own_player)
+            mock_print.assert_not_called()
+
+    def test_no_print_not_multiple_of_5(self):
+        # Test that the function does not print when time is not a multiple of 5
+        game_info = {"time_remaining_s": 6}
+        own_player = {"score": 100}
+
+        with patch("builtins.print") as mock_print:
+            print_exp_rate(game_info, own_player)
+            mock_print.assert_not_called()
+
+    def test_zero_division_handling(self):
+        # Test division by zero is handled (edge case)
+        game_info = {"time_remaining_s": 1800}
+        own_player = {"score": 100}
+
+        with patch("builtins.print") as mock_print:
+            with self.assertRaises(ZeroDivisionError):
+                print_exp_rate(game_info, own_player)
+
+    def tearDown(self):
+        # Reset the global variable after each test
+        set_current_exp_rate(None)
+
+
+class TestAssessAttackFunction(unittest.TestCase):
+    def test_valid_attack(self):
+        # Case where the target is in range, has health, and should be attacked
+        own_player = {"position": {"x": 10, "y": 10}}
+        target = {"position": {"x": 15, "y": 15}, "health": 50}
+        moves = []
+
+        updated_moves = assess_attack(own_player, target, moves)
+        self.assertEqual(updated_moves, ["attack"])
+
+    def test_target_out_of_range(self):
+        # Case where the target is out of range
+        own_player = {"position": {"x": 10, "y": 10}}
+        target = {"position": {"x": 200, "y": 200}, "health": 50}
+        moves = []
+
+        updated_moves = assess_attack(own_player, target, moves)
+        self.assertEqual(updated_moves, [])
+
+    def test_target_no_health(self):
+        # Case where the target has no health
+        own_player = {"position": {"x": 10, "y": 10}}
+        target = {"position": {"x": 15, "y": 15}, "health": 0}
+        moves = []
+
+        updated_moves = assess_attack(own_player, target, moves)
+        self.assertEqual(updated_moves, [])
+
+    def test_target_no_health_field(self):
+        # Case where the target has no health field
+        own_player = {"position": {"x": 10, "y": 10}}
+        target = {"position": {"x": 15, "y": 15}}
+        moves = []
+
+        updated_moves = assess_attack(own_player, target, moves)
+        self.assertEqual(updated_moves, [])
+
+    def test_attack_appends_to_existing_moves(self):
+        # Case where moves already contain other actions
+        own_player = {"position": {"x": 10, "y": 10}}
+        target = {"position": {"x": 15, "y": 15}, "health": 50}
+        moves = ["special"]
+
+        updated_moves = assess_attack(own_player, target, moves)
+        self.assertEqual(updated_moves, ["special", "attack"])
+
+    def test_target_health_negative(self):
+        # Case where the target has negative health
+        own_player = {"position": {"x": 10, "y": 10}}
+        target = {"position": {"x": 15, "y": 15}, "health": -10}
+        moves = []
+
+        updated_moves = assess_attack(own_player, target, moves)
+        self.assertEqual(updated_moves, [])
 
 
 if __name__ == "__main__":
