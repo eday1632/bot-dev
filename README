@@ -1,5 +1,8 @@
+installation 
+> pip install -r requirements.txt
+
 testing
 > python -m unittest test_main.py
 
 running
-> fastapi dev main.py --port 3000
+> fastapi run main.py --port 3000

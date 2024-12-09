@@ -279,7 +279,7 @@ def play(level_data: LevelData):
         exp_rate = own_player["score"] / (1800 - game_info["time_remaining_s"])
         if CURRENT_EXP_RATE != exp_rate:
             CURRENT_EXP_RATE = exp_rate
-            print(f"Score rate: {exp_rate}")
+            print(f"Score rate: {CURRENT_EXP_RATE}")
 
     target = get_best_item(own_player, potential_targets, hazards, enemies, players)
     if not target:
@@ -347,7 +347,7 @@ def play(level_data: LevelData):
 
     # Handle bomb-related logic
     # if no collisions drop bomb
-    bomb_distance = 120000
+    bomb_distance = 140000
     if own_player["special_equipped"] == "bomb":
         # Check for enemies
         for enemy in enemies:
@@ -361,6 +361,7 @@ def play(level_data: LevelData):
                 < bomb_distance
                 and enemy["health"] > 0
                 and target["id"] != enemy["id"]
+                and len(own_player["collisions"]) == 0
             ):
                 moves.append("special")
                 break
@@ -375,6 +376,7 @@ def play(level_data: LevelData):
                 < bomb_distance
                 and enemy["health"] > 0
                 and target["id"] != enemy["id"]
+                and len(own_player["collisions"]) == 0
             ):
                 moves.append("special")
                 break
@@ -389,6 +391,7 @@ def play(level_data: LevelData):
                 < bomb_distance
                 and enemy["health"] > 0
                 and target["id"] != enemy["id"]
+                and len(own_player["collisions"]) == 0
             ):
                 moves.append("special")
                 break
@@ -403,12 +406,13 @@ def play(level_data: LevelData):
                 < bomb_distance
                 and enemy["health"] > 0
                 and target["id"] != enemy["id"]
+                and len(own_player["collisions"]) == 0
             ):
                 moves.append("special")
                 break
 
             if (
-                dist_squared_to(enemy["position"], own_player["position"]) < 30000
+                dist_squared_to(enemy["position"], own_player["position"]) < 40000
                 and own_player["is_shield_ready"]
                 and not bomb
                 and enemy["health"] > 0
@@ -429,6 +433,7 @@ def play(level_data: LevelData):
                 < dist_squared_to(player["position"], own_player["position"])
                 < bomb_distance
                 and player["health"] > 0
+                and len(own_player["collisions"]) == 0
                 and target["id"] != player["id"]
             ):
                 moves.append("special")
@@ -443,6 +448,7 @@ def play(level_data: LevelData):
                 < dist_squared_to(player["position"], own_player["position"])
                 < bomb_distance
                 and player["health"] > 0
+                and len(own_player["collisions"]) == 0
                 and target["id"] != player["id"]
             ):
                 moves.append("special")
@@ -457,6 +463,7 @@ def play(level_data: LevelData):
                 < dist_squared_to(player["position"], own_player["position"])
                 < bomb_distance
                 and player["health"] > 0
+                and len(own_player["collisions"]) == 0
                 and target["id"] != player["id"]
             ):
                 moves.append("special")
@@ -471,13 +478,14 @@ def play(level_data: LevelData):
                 < dist_squared_to(player["position"], own_player["position"])
                 < bomb_distance
                 and player["health"] > 0
+                and len(own_player["collisions"]) == 0
                 and target["id"] != player["id"]
             ):
                 moves.append("special")
                 break
 
             if (
-                dist_squared_to(player["position"], own_player["position"]) < 30000
+                dist_squared_to(player["position"], own_player["position"]) < 40000
                 and own_player["is_shield_ready"]
                 and not bomb
                 and player["health"] > 0
@@ -514,7 +522,7 @@ def play(level_data: LevelData):
 
     # Handle bomb response
     if bomb and bomb["status"] != "idle":
-        space = 35
+        space = 45
         moves.append("shield")
         if bomb["attack_damage"] > own_player["health"]:
             moves.append({"use": "big_potion"})

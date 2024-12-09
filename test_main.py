@@ -1,5 +1,11 @@
 import unittest
-from main import peripheral_danger, dist_squared_to, apply_skill_points, losing_battle
+from main import (
+    peripheral_danger,
+    dist_squared_to,
+    apply_skill_points,
+    losing_battle,
+    stock_full,
+)
 
 
 class TestPeripheralDanger(unittest.TestCase):
@@ -269,21 +275,29 @@ class TestLosingBattle(unittest.TestCase):
         own_player = {"health": 50}
         item = {"attack_damage": 60}
         result = losing_battle(own_player, item)
-        self.assertTrue(result, "Should return True when item attack damage is greater than player health.")
+        self.assertTrue(
+            result,
+            "Should return True when item attack damage is greater than player health.",
+        )
 
     def test_losing_battle_false(self):
         """Test when the item's attack damage does not exceed the player's health."""
         own_player = {"health": 100}
         item = {"attack_damage": 60}
         result = losing_battle(own_player, item)
-        self.assertFalse(result, "Should return False when item attack damage is less than or equal to player health.")
+        self.assertFalse(
+            result,
+            "Should return False when item attack damage is less than or equal to player health.",
+        )
 
     def test_no_attack_damage_key(self):
         """Test when the item does not have an attack_damage key."""
         own_player = {"health": 100}
         item = {"name": "Sword"}
         result = losing_battle(own_player, item)
-        self.assertFalse(result, "Should return False when attack_damage key is missing in item.")
+        self.assertFalse(
+            result, "Should return False when attack_damage key is missing in item."
+        )
 
     def test_none_attack_damage(self):
         """Test when the attack_damage value is None."""
@@ -297,14 +311,61 @@ class TestLosingBattle(unittest.TestCase):
         own_player = {"health": 100}
         item = {"attack_damage": 100}
         result = losing_battle(own_player, item)
-        self.assertTrue(result, "Should return True when item attack damage equals player health.")
+        self.assertTrue(
+            result, "Should return True when item attack damage equals player health."
+        )
 
     def test_missing_health_key(self):
         """Test when the player does not have a health key."""
         own_player = {"mana": 50}
         item = {"attack_damage": 50}
-        with self.assertRaises(KeyError, msg="Should raise KeyError if own_player does not have a health key."):
+        with self.assertRaises(
+            KeyError,
+            msg="Should raise KeyError if own_player does not have a health key.",
+        ):
             losing_battle(own_player, item)
+
+
+class TestStockFullFunction(unittest.TestCase):
+    def test_ring_stock_full(self):
+        # Case where ring stock is full
+        own_player = {
+            "items": {"rings": [1, 2, 3, 4], "speed_zappers": [], "big_potions": []}
+        }
+        item = {"type": "ring"}
+        self.assertTrue(stock_full(own_player, item))
+
+        # Case where ring stock is not full
+        own_player["items"]["rings"] = [1, 2, 3]
+        self.assertFalse(stock_full(own_player, item))
+
+    def test_speed_zapper_stock_full(self):
+        # Case where speed zapper stock is full
+        own_player = {"items": {"rings": [], "speed_zappers": [1], "big_potions": []}}
+        item = {"type": "speed_zapper"}
+        self.assertTrue(stock_full(own_player, item))
+
+        # Case where speed zapper stock is not full
+        own_player["items"]["speed_zappers"] = []
+        self.assertFalse(stock_full(own_player, item))
+
+    def test_big_potion_stock_full(self):
+        # Case where big potion stock is full
+        own_player = {
+            "items": {"rings": [], "speed_zappers": [], "big_potions": [1, 2, 3, 4, 5]}
+        }
+        item = {"type": "big_potion"}
+        self.assertTrue(stock_full(own_player, item))
+
+        # Case where big potion stock is not full
+        own_player["items"]["big_potions"] = [1, 2, 3, 4]
+        self.assertFalse(stock_full(own_player, item))
+
+    def test_other_item_type(self):
+        # Case for an unhandled item type
+        own_player = {"items": {"rings": [], "speed_zappers": [], "big_potions": []}}
+        item = {"type": "unknown_item"}
+        self.assertFalse(stock_full(own_player, item))
 
 
 if __name__ == "__main__":
