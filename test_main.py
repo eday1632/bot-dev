@@ -5,6 +5,7 @@ from main import (
     apply_skill_points,
     assess_attack,
     assess_health_needs,
+    assess_icicle_use,
     assess_zapper_use,
     bomb_nearby,
     dedupe_moves,
@@ -505,7 +506,7 @@ class TestLosingBattle(unittest.TestCase):
 
     def test_exactly_equal_damage_and_health(self):
         """Test when the item's attack damage is exactly equal to the player's health."""
-        own_player = {"health": 100}
+        own_player = {"health": 120}
         item = {"attack_damage": 100}
         result = losing_battle(own_player, item)
         self.assertTrue(
@@ -991,3 +992,74 @@ class TestHandleCollisionsFunction(unittest.TestCase):
         self.assertEqual(
             target["position"], {"x": 1, "y": 1}
         )  # Adjusted only for "wolf" collision
+
+
+class TestAssessIcicleUseFunction(unittest.TestCase):
+    def test_valid_target_in_range(self):
+        # Case: Target is a valid type, not frozen, in range, and shield not raised
+        own_player = {"position": {"x": 100, "y": 100}, "shield_raised": False}
+        target = {"type": "ghoul", "position": {"x": 150, "y": 150}, "is_frozen": False}
+        moves = []
+
+        updated_moves = assess_icicle_use(own_player, target, moves)
+
+        self.assertIn("special", updated_moves)
+
+    def test_target_out_of_range(self):
+        # Case: Target is out of range
+        own_player = {"position": {"x": 100, "y": 100}, "shield_raised": False}
+        target = {"type": "ghoul", "position": {"x": 600, "y": 600}, "is_frozen": False}
+        moves = []
+
+        updated_moves = assess_icicle_use(own_player, target, moves)
+
+        self.assertNotIn("special", updated_moves)
+
+    def test_target_already_frozen(self):
+        # Case: Target is already frozen
+        own_player = {"position": {"x": 100, "y": 100}, "shield_raised": False}
+        target = {"type": "tiny", "position": {"x": 150, "y": 150}, "is_frozen": True}
+        moves = []
+
+        updated_moves = assess_icicle_use(own_player, target, moves)
+
+        self.assertNotIn("special", updated_moves)
+
+    def test_target_invalid_type(self):
+        # Case: Target is not a valid type
+        own_player = {"position": {"x": 100, "y": 100}, "shield_raised": False}
+        target = {"type": "wolf", "position": {"x": 150, "y": 150}, "is_frozen": False}
+        moves = []
+
+        updated_moves = assess_icicle_use(own_player, target, moves)
+
+        self.assertNotIn("special", updated_moves)
+
+    def test_player_shield_raised(self):
+        # Case: Player's shield is raised
+        own_player = {"position": {"x": 100, "y": 100}, "shield_raised": True}
+        target = {
+            "type": "minotaur",
+            "position": {"x": 150, "y": 150},
+            "is_frozen": False,
+        }
+        moves = []
+
+        updated_moves = assess_icicle_use(own_player, target, moves)
+
+        self.assertNotIn("special", updated_moves)
+
+    def test_valid_target_append_to_moves(self):
+        # Case: Valid target and moves already contain other actions
+        own_player = {"position": {"x": 100, "y": 100}, "shield_raised": False}
+        target = {
+            "type": "player",
+            "position": {"x": 150, "y": 150},
+            "is_frozen": False,
+        }
+        moves = ["attack"]
+
+        updated_moves = assess_icicle_use(own_player, target, moves)
+
+        self.assertIn("special", updated_moves)
+        self.assertIn("attack", updated_moves)

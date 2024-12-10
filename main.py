@@ -36,6 +36,8 @@ def exp_rate(own_player: dict, item: dict) -> float:
     # Adjust experience for player type
     if item["type"] == "player":
         exps["player"] += item["levelling"]["level"] * 10
+        if item["special_equipped"] == "freeze":
+            exps["player"] = 0
 
     # Special cases for chest and power-up
     if item["type"] in ["chest", "power_up"] and own_player["special_equipped"] not in [
@@ -119,7 +121,7 @@ def apply_skill_points(own_player: dict, moves: list) -> list:
 def losing_battle(own_player: dict, item: dict) -> bool:
     if (
         item.get("attack_damage") is not None
-        and item["attack_damage"] >= own_player["health"] * 1.2
+        and item["attack_damage"] * 1.2 >= own_player["health"]
     ):
         return True
     return False
@@ -266,7 +268,7 @@ def assess_attack(own_player, target, moves):
 
 def assess_health_needs(own_player, total_danger_value, moves):
     # Handle health and potion usage
-    if total_danger_value > own_player["health"] * 1.25:
+    if total_danger_value > own_player["health"] * 1.3:
         moves.append({"use": "big_potion"})
         if not own_player["is_cloaked"]:
             moves.append({"use": "ring"})
@@ -354,8 +356,15 @@ def assess_bomb_use(own_player, target):
     pass
 
 
-def assess_icicle_use(own_player, target):
-    pass
+def assess_icicle_use(own_player, target, moves):
+    if (
+        target["type"] in ["ghoul", "tiny", "minotaur", "player"]
+        and not target["is_frozen"]
+        and dist_squared_to(target["position"], own_player["position"]) < 225000
+        and not own_player["shield_raised"]
+    ):
+        moves.append("special")
+    return moves
 
 
 def assess_shockwave_use(own_player, target):
@@ -494,6 +503,7 @@ def play(level_data: LevelData):
                 and not bomb
                 and own_player["health"] > own_player["attack_damage"] * 2.5
                 and target["id"] == enemy["id"]
+                and own_player["is_shield_ready"]
             ):
                 moves.append("special")
                 break
@@ -562,19 +572,13 @@ def play(level_data: LevelData):
                 and not bomb
                 and own_player["health"] > own_player["attack_damage"] * 2.5
                 and target["id"] == player["id"]
+                and own_player["is_shield_ready"]
             ):
                 moves.append("special")
                 break
 
     elif own_player["special_equipped"] == "freeze":
-        if (
-            target["type"] in ["ghoul", "tiny", "minotaur", "player"]
-            and not target["is_frozen"]
-            and dist_squared_to(target["position"], own_player["position"]) < 225000
-            and not own_player["shield_raised"]
-        ):
-            moves.append("special")
-
+        moves = assess_icicle_use(own_player, target, moves)
     elif own_player["special_equipped"] == "shockwave":
         if bomb:
             moves.append("special")
