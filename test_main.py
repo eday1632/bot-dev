@@ -57,7 +57,7 @@ class TestPlayerUnpreparedFunction(unittest.TestCase):
         own_player = {
             "items": {"big_potions": [1]},
             "health": 100,
-            "special_equipped": "shield",
+            "special_equipped": "freeze",
         }
         item = {"type": "chest"}
         self.assertFalse(player_unprepared(own_player, item))
@@ -67,19 +67,9 @@ class TestPlayerUnpreparedFunction(unittest.TestCase):
         own_player = {
             "items": {"big_potions": [1]},
             "health": 100,
-            "special_equipped": "shield",
+            "special_equipped": "shockwave",
         }
-        item = {"power": "shockwave"}
-        self.assertTrue(player_unprepared(own_player, item))
-
-    def test_shockwave_without_special_equipped(self):
-        # Case: Item has power "shockwave" but no special is equipped
-        own_player = {
-            "items": {"big_potions": [1]},
-            "health": 100,
-            "special_equipped": None,
-        }
-        item = {"power": "shockwave"}
+        item = {"power": "shockwave", "type": "power_up"}
         self.assertFalse(player_unprepared(own_player, item))
 
     def test_other_items_with_no_conditions_met(self):
@@ -87,7 +77,7 @@ class TestPlayerUnpreparedFunction(unittest.TestCase):
         own_player = {
             "items": {"big_potions": [1]},
             "health": 100,
-            "special_equipped": "shield",
+            "special_equipped": None,
         }
         item = {"type": "wolf"}
         self.assertFalse(player_unprepared(own_player, item))
@@ -104,7 +94,7 @@ class TestHandleBombThreatFunction(unittest.TestCase):
         updated_moves = handle_bomb_threat(own_player, target, bomb, moves)
 
         self.assertIn("shield", updated_moves)
-        self.assertEqual(target["position"], {"x": -50, "y": 50})
+        self.assertEqual(target["position"], {"x": -50, "y": -50})
 
     def test_bomb_on_the_left(self):
         # Case: Bomb is to the left of the player
@@ -116,7 +106,7 @@ class TestHandleBombThreatFunction(unittest.TestCase):
         updated_moves = handle_bomb_threat(own_player, target, bomb, moves)
 
         self.assertIn("shield", updated_moves)
-        self.assertEqual(target["position"], {"x": 150, "y": 50})
+        self.assertEqual(target["position"], {"x": 150, "y": -50})
 
     def test_bomb_above(self):
         # Case: Bomb is above the player
@@ -128,7 +118,7 @@ class TestHandleBombThreatFunction(unittest.TestCase):
         updated_moves = handle_bomb_threat(own_player, target, bomb, moves)
 
         self.assertIn("shield", updated_moves)
-        self.assertEqual(target["position"], {"x": 50, "y": -50})
+        self.assertEqual(target["position"], {"x": -50, "y": -50})
 
     def test_bomb_below(self):
         # Case: Bomb is below the player
@@ -140,7 +130,7 @@ class TestHandleBombThreatFunction(unittest.TestCase):
         updated_moves = handle_bomb_threat(own_player, target, bomb, moves)
 
         self.assertIn("shield", updated_moves)
-        self.assertEqual(target["position"], {"x": 50, "y": 150})
+        self.assertEqual(target["position"], {"x": -50, "y": 150})
 
     def test_no_bomb(self):
         # Case: No bomb present

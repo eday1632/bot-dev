@@ -11,12 +11,60 @@ def dist_squared_to(a: dict, b: dict) -> float:
 
 
 def slope(a: dict, b: dict) -> float:
-    return (b["y"] - a["y"]) / (b["x"] - a["x"])
+    return (int(b["y"]) - a["y"]) / (int(b["x"]) - a["x"])
+
+
+def calculate_potion_value(own_player):
+    potion_values = {
+        0: 512,
+        1: 64,
+        2: 32,
+        3: 16,
+        4: 8,
+        5: 4,
+        6: 0,
+    }
+    on_hand = len(own_player["items"]["big_potions"])
+    return potion_values[on_hand] / (
+        (own_player["health"] + 1) / own_player["max_health"]
+    )
+
+
+def calculate_ring_value(own_player):
+    ring_values = {
+        0: 128,
+        1: 64,
+        2: 32,
+        3: 16,
+        4: 8,
+        5: 0,
+    }
+    on_hand = len(own_player["items"]["rings"])
+    return ring_values[on_hand]
+
+
+def calculate_zapper_value(own_player):
+    zapper_values = {
+        0: 128,
+        1: 64,
+        2: 32,
+        3: 0,
+        4: 0,
+        5: 0,
+    }
+    on_hand = len(own_player["items"]["speed_zappers"])
+    return zapper_values[on_hand]
 
 
 def exp_rate(own_player: dict, item: dict) -> float:
+    # TODO: Calculate richest area
+    # TODO: Calculate kamakazi value
     # Calculate the player's speed
     my_speed = 15000 + own_player["levelling"]["speed"] * 500  # TODO: add dash?
+
+    potion_value = calculate_potion_value(own_player)
+    ring_value = calculate_ring_value(own_player)
+    zapper_value = calculate_zapper_value(own_player)
 
     # Experience values for different item types
     exps = {
@@ -26,9 +74,9 @@ def exp_rate(own_player: dict, item: dict) -> float:
         "wolf": 80,
         "player": 60,
         "coin": 200,
-        "big_potion": 100,
-        "speed_zapper": 50,
-        "ring": 50,
+        "big_potion": potion_value,
+        "speed_zapper": zapper_value,
+        "ring": ring_value,
         "chest": 0,
         "power_up": 0,
     }
@@ -127,33 +175,6 @@ def losing_battle(own_player: dict, item: dict) -> bool:
     return False
 
 
-def stock_full(own_player: dict, item: dict) -> bool:
-    if item["type"] == "ring" and len(own_player["items"]["rings"]) >= 4:
-        return True
-    if (
-        item["type"] == "speed_zapper"
-        and len(own_player["items"]["speed_zappers"]) >= 1
-    ):
-        return True
-    if item["type"] == "big_potion" and len(own_player["items"]["big_potions"]) >= 5:
-        return True
-    return False
-
-
-def player_unprepared(own_player: dict, item: dict) -> bool:
-    if len(own_player["items"]["big_potions"]) == 0 and own_player["health"] < 85:
-        if item["type"] != "big_potion":
-            return True
-    elif (
-        item["type"] in ["chest", "power_up"]
-        and own_player["special_equipped"] != "bomb"
-    ):
-        return False
-    elif item.get("power") == "shockwave" and own_player["special_equipped"]:
-        return True
-    return False
-
-
 def bomb_nearby(item: dict, hazards: list) -> dict:
     for hazard in hazards:
         if (
@@ -202,11 +223,7 @@ def get_best_item(
             return item
 
         # Skip items based on various conditions
-        if player_unprepared(own_player, item):
-            continue
         if losing_battle(own_player, item):
-            continue
-        if stock_full(own_player, item):
             continue
         if peripheral_danger(own_player, item, enemies, players, hazards):
             continue
@@ -222,7 +239,7 @@ def get_best_item(
 
             if (
                 item.get("special_equipped") == "freeze"
-                and item["health"] > own_player["attack_damage"] * 3
+                and item["health"] > own_player["attack_damage"] * 2.5
                 and len(own_player["items"]["big_potions"]) == 0
             ):
                 continue
@@ -260,7 +277,7 @@ def print_exp_rate(game_info: dict, own_player: dict) -> None:
 def assess_attack(own_player, target, moves):
     if (
         target.get("health") is not None
-        and dist_squared_to(own_player["position"], target["position"]) < 15625
+        and dist_squared_to(own_player["position"], target["position"]) < 16625
     ):
         moves.append("attack")
     return moves
@@ -268,7 +285,7 @@ def assess_attack(own_player, target, moves):
 
 def assess_health_needs(own_player, total_danger_value, moves):
     # Handle health and potion usage
-    if total_danger_value > own_player["health"] * 1.3:
+    if total_danger_value > own_player["health"] * 1.5:
         moves.append({"use": "big_potion"})
         if not own_player["is_cloaked"]:
             moves.append({"use": "ring"})
@@ -307,12 +324,12 @@ def handle_bomb_threat(own_player, target, bomb, moves):
         moves.append("shield")
         target["position"]["x"] = (
             own_player["position"]["x"] - space
-            if bomb["position"]["x"] > own_player["position"]["x"]
+            if bomb["position"]["x"] >= own_player["position"]["x"]
             else own_player["position"]["x"] + space
         )
         target["position"]["y"] = (
             own_player["position"]["y"] - space
-            if bomb["position"]["y"] > own_player["position"]["y"]
+            if bomb["position"]["y"] >= own_player["position"]["y"]
             else own_player["position"]["y"] + space
         )
     return moves
@@ -344,12 +361,76 @@ def handle_collisions(own_player, target, moves):
                 "chest",
             ]:
                 moves.append("attack")
-            if collision["type"] != target["type"]:
-                target["position"]["x"] -= collision["relative_position"]["x"] * 3
-                target["position"]["y"] -= collision["relative_position"]["y"] * 3
+
+            # if collision["type"] != target["type"]:
+            #     target["position"]["x"] -= collision["relative_position"]["x"] * 3
+            #     target["position"]["y"] -= collision["relative_position"]["y"] * 3
 
         moves.append({"move_to": target["position"]})
     return moves
+
+
+def avoid_collisions(own_player, target, threats):
+    nearby_threats = []
+    for threat in threats:
+        if dist_squared_to(own_player["position"], threat["position"]) < 50000:
+            nearby_threats.append(threat)
+
+    for threat in nearby_threats:
+        if threat["id"] != target["id"] and threat["type"] != target["type"]:
+            buffer = 150
+            threat_slope = slope(own_player["position"], threat["position"])
+            target_slope = slope(own_player["position"], target["position"])
+            threat_inverse = (1 / threat_slope) * buffer
+            if (
+                target["position"]["x"] > threat["position"]["x"]
+                and threat["position"]["x"] > own_player["position"]["x"]
+            ):
+                if (
+                    target["position"]["y"] > threat["position"]["y"]
+                    and threat["position"]["y"] > own_player["position"]["y"]
+                ):
+                    if threat_slope > target_slope:
+                        target["position"]["x"] = own_player["position"]["x"] + buffer
+                        target["position"]["y"] = own_player["position"]["y"] - threat_inverse
+                    else:
+                        target["position"]["x"] = own_player["position"]["x"] - threat_inverse
+                        target["position"]["y"] = own_player["position"]["y"] + buffer
+                elif (
+                    target["position"]["y"] < threat["position"]["y"]
+                    and threat["position"]["y"] < own_player["position"]["y"]
+                ):
+                    if threat_slope > target_slope:
+                        target["position"]["x"] = own_player["position"]["x"] - threat_inverse
+                        target["position"]["y"] = own_player["position"]["y"] - buffer
+                    else:
+                        target["position"]["x"] = own_player["position"]["x"] + buffer
+                        target["position"]["y"] = own_player["position"]["y"] + threat_inverse
+            elif (
+                target["position"]["x"] < threat["position"]["x"]
+                and threat["position"]["x"] < own_player["position"]["x"]
+            ):
+                if (
+                    target["position"]["y"] > threat["position"]["y"]
+                    and threat["position"]["y"] > own_player["position"]["y"]
+                ):
+                    if threat_slope > target_slope:
+                        target["position"]["x"] = own_player["position"]["x"] + threat_inverse
+                        target["position"]["y"] = own_player["position"]["y"] + buffer
+                    else:
+                        target["position"]["x"] = own_player["position"]["x"] - buffer
+                        target["position"]["y"] = own_player["position"]["y"] - threat_inverse
+                elif (
+                    target["position"]["y"] < threat["position"]["y"]
+                    and threat["position"]["y"] < own_player["position"]["y"]
+                ):
+                    if threat_slope > target_slope:
+                        target["position"]["x"] = own_player["position"]["x"] - buffer
+                        target["position"]["y"] = own_player["position"]["y"] + threat_inverse
+                    else:
+                        target["position"]["x"] = own_player["position"]["x"] + threat_inverse
+                        target["position"]["y"] = own_player["position"]["y"] - buffer
+    return target
 
 
 def assess_bomb_use(own_player, target):
@@ -435,6 +516,7 @@ def play(level_data: LevelData):
     moves = assess_zapper_use(own_player, target, moves)
 
     moves = handle_collisions(own_player, target, moves)
+    target = avoid_collisions(own_player, target, threats)
 
     # Handle bomb-related logic
     bomb_distance = 160000
