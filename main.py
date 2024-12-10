@@ -80,15 +80,24 @@ def peripheral_danger(
     total_danger = 0
 
     for enemy in enemies:
-        if dist_squared_to(item["position"], enemy["position"]) < 100000:
+        if (
+            dist_squared_to(item["position"], enemy["position"]) < 100000
+            and enemy["health"] > 0
+        ):
             total_danger += enemy["attack_damage"]
 
     for player in players:
-        if dist_squared_to(item["position"], player["position"]) < 100000:
+        if (
+            dist_squared_to(item["position"], player["position"]) < 100000
+            and player["health"] > 0
+        ):
             total_danger += player["attack_damage"]
 
     for hazard in hazards:
-        if dist_squared_to(item["position"], hazard["position"]) < 60000:
+        if (
+            dist_squared_to(item["position"], hazard["position"]) < 60000
+            and hazard["status"] != "idle"
+        ):
             total_danger += hazard["attack_damage"]
 
     return total_danger > total_health
@@ -119,6 +128,7 @@ def losing_battle(own_player: dict, item: dict) -> bool:
     if (
         item.get("attack_damage") is not None
         and item["attack_damage"] >= own_player["health"]
+        and item["health"] > 0
     ):
         return True
     return False
@@ -183,7 +193,7 @@ def total_danger(own_player: dict, players: list, enemies: list, hazards: list) 
 
     for hazard in hazards:
         if (
-            dist_squared_to(own_player["position"], hazard["position"]) < 80000
+            dist_squared_to(own_player["position"], hazard["position"]) < 60000
             and hazard["status"] != "idle"
         ):
             total_danger += hazard["attack_damage"]
@@ -298,6 +308,7 @@ def assess_zapper_use(own_player, target, moves):
         target["type"] in ["player", "tiny"]
         and dist_squared_to(own_player["position"], target["position"]) < 225000
         and not target["is_zapped"]
+        and target["health"] > 0
     ):
         moves.append({"use": "speed_zapper"})
     return moves
