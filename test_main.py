@@ -14,7 +14,122 @@ from main import (
     assess_zapper_use,
     handle_icicle_threat,
     handle_collisions,
+    filter_threats,
+    handle_bomb_threat,
 )
+
+
+class TestHandleBombThreatFunction(unittest.TestCase):
+    def test_bomb_on_the_right(self):
+        # Case: Bomb is to the right of the player
+        own_player = {"position": {"x": 50, "y": 50}}
+        target = {"position": {"x": 0, "y": 0}}
+        bomb = {"position": {"x": 100, "y": 50}}
+        moves = []
+
+        updated_moves = handle_bomb_threat(own_player, target, bomb, moves)
+
+        self.assertIn("shield", updated_moves)
+        self.assertEqual(target["position"], {"x": -50, "y": 50})
+
+    def test_bomb_on_the_left(self):
+        # Case: Bomb is to the left of the player
+        own_player = {"position": {"x": 50, "y": 50}}
+        target = {"position": {"x": 0, "y": 0}}
+        bomb = {"position": {"x": 0, "y": 50}}
+        moves = []
+
+        updated_moves = handle_bomb_threat(own_player, target, bomb, moves)
+
+        self.assertIn("shield", updated_moves)
+        self.assertEqual(target["position"], {"x": 150, "y": 50})
+
+    def test_bomb_above(self):
+        # Case: Bomb is above the player
+        own_player = {"position": {"x": 50, "y": 50}}
+        target = {"position": {"x": 0, "y": 0}}
+        bomb = {"position": {"x": 50, "y": 100}}
+        moves = []
+
+        updated_moves = handle_bomb_threat(own_player, target, bomb, moves)
+
+        self.assertIn("shield", updated_moves)
+        self.assertEqual(target["position"], {"x": 50, "y": -50})
+
+    def test_bomb_below(self):
+        # Case: Bomb is below the player
+        own_player = {"position": {"x": 50, "y": 50}}
+        target = {"position": {"x": 0, "y": 0}}
+        bomb = {"position": {"x": 50, "y": 0}}
+        moves = []
+
+        updated_moves = handle_bomb_threat(own_player, target, bomb, moves)
+
+        self.assertIn("shield", updated_moves)
+        self.assertEqual(target["position"], {"x": 50, "y": 150})
+
+    def test_no_bomb(self):
+        # Case: No bomb present
+        own_player = {"position": {"x": 50, "y": 50}}
+        target = {"position": {"x": 0, "y": 0}}
+        bomb = None
+        moves = []
+
+        updated_moves = handle_bomb_threat(own_player, target, bomb, moves)
+
+        self.assertEqual(updated_moves, [])
+        self.assertEqual(target["position"], {"x": 0, "y": 0})
+
+
+class TestFilterThreatsFunction(unittest.TestCase):
+    def test_all_threats_filtered(self):
+        # Case: All threats meet the criteria and should be included
+        threats = [
+            {"health": 50, "status": "active"},
+            {"health": 100},
+            {"status": "alert"},
+        ]
+        filtered = filter_threats(threats)
+        self.assertEqual(len(filtered), len(threats))
+        self.assertEqual(filtered, threats)
+
+    def test_no_threats_filtered(self):
+        # Case: No threats meet the criteria
+        threats = [
+            {"health": 0, "status": "idle"},
+            {"health": None, "status": "idle"},
+        ]
+        filtered = filter_threats(threats)
+        self.assertEqual(filtered, [])
+
+    def test_some_threats_filtered(self):
+        # Case: Only some threats meet the criteria
+        threats = [
+            {"health": 50, "status": "active"},  # Valid
+            {"health": 0, "status": "idle"},  # Invalid
+            {"status": "alert"},  # Valid
+        ]
+        filtered = filter_threats(threats)
+        self.assertEqual(len(filtered), 2)
+        self.assertIn({"health": 50, "status": "active"}, filtered)
+        self.assertIn({"status": "alert"}, filtered)
+
+    def test_threats_with_missing_fields(self):
+        # Case: Threats missing fields
+        threats = [
+            {"health": 50},  # Valid
+            {},  # Invalid
+            {"status": "idle"},  # Invalid
+        ]
+        filtered = filter_threats(threats)
+        self.assertEqual(len(filtered), 1)
+        self.assertIn({"health": 50}, filtered)
+
+    def test_empty_list(self):
+        # Case: Empty threats list
+        threats = []
+        filtered = filter_threats(threats)
+        self.assertEqual(filtered, [])
 
 
 class TestPeripheralDanger(unittest.TestCase):

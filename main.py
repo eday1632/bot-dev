@@ -188,6 +188,9 @@ def get_best_item(
     target = None
 
     for item in items:
+        if item["type"] == "tiny" and dist_squared_to(own_player["position"], item["position"]) < 16500:
+            return item
+
         # Skip items based on various conditions
         if player_unprepared(own_player, item):
             continue
@@ -255,7 +258,7 @@ def assess_attack(own_player, target, moves):
 
 def assess_health_needs(own_player, total_danger_value, moves):
     # Handle health and potion usage
-    if total_danger_value > own_player["health"] * 1.2:
+    if total_danger_value > own_player["health"] * 1.25:
         moves.append({"use": "big_potion"})
         if not own_player["is_cloaked"]:
             moves.append({"use": "ring"})
@@ -288,8 +291,21 @@ def assess_zapper_use(own_player, target, moves):
     return moves
 
 
-def handle_bomb_threat(own_player, bomb):
-    pass
+def handle_bomb_threat(own_player, target, bomb, moves):
+    if bomb:
+        space = 100
+        moves.append("shield")
+        target["position"]["x"] = (
+            own_player["position"]["x"] - space
+            if bomb["position"]["x"] > own_player["position"]["x"]
+            else own_player["position"]["x"] + space
+        )
+        target["position"]["y"] = (
+            own_player["position"]["y"] - space
+            if bomb["position"]["y"] > own_player["position"]["y"]
+            else own_player["position"]["y"] + space
+        )
+    return moves
 
 
 def handle_icicle_threat(own_player, hazards, moves):
@@ -336,13 +352,6 @@ def assess_icicle_use(own_player, target):
 
 def assess_shockwave_use(own_player, target):
     pass
-
-
-def threat_nearby(own_player, threats):
-    for threat in threats:
-        if dist_squared_to(own_player["position"], threat["position"]) < 50000:
-            return threat
-    return {}
 
 
 def filter_threats(threats):
@@ -562,21 +571,7 @@ def play(level_data: LevelData):
             moves.append("special")
 
     moves = handle_icicle_threat(own_player, hazards, moves)
-
-    # Handle bomb response
-    if bomb:
-        space = 100
-        moves.append("shield")
-        target["position"]["x"] = (
-            own_player["position"]["x"] - space
-            if bomb["position"]["x"] > own_player["position"]["x"]
-            else own_player["position"]["x"] + space
-        )
-        target["position"]["y"] = (
-            own_player["position"]["y"] - space
-            if bomb["position"]["y"] > own_player["position"]["y"]
-            else own_player["position"]["y"] + space
-        )
+    moves = handle_bomb_threat(own_player, target, bomb, moves)
 
     # Final move to the target
     moves.append({"move_to": target["position"]})
