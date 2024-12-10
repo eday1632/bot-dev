@@ -345,6 +345,16 @@ def threat_nearby(own_player, threats):
     return {}
 
 
+def filter_threats(threats):
+    existing_threats = []
+    for threat in threats:
+        if threat.get("health") and threat["health"] > 0:
+            existing_threats.append(threat)
+        elif threat.get("status") and threat["status"] != "idle":
+            existing_threats.append(threat)
+    return existing_threats
+
+
 class LevelData(BaseModel):
     enemies: list
     players: list
@@ -359,22 +369,13 @@ def play(level_data: LevelData):
     own_player = level_data.own_player
     threats = []
 
-    enemies = []
-    for enemy in level_data.enemies:
-        if enemy["health"] > 0:
-            enemies.append(enemy)
+    enemies = filter_threats(level_data.enemies)
     threats.extend(enemies)
 
-    hazards = []
-    for hazard in level_data.hazards:
-        if hazard["status"] != "idle":
-            hazards.append(hazard)
+    hazards = filter_threats(level_data.hazards)
     threats.extend(hazards)
 
-    players = []
-    for player in level_data.players:
-        if player["health"] > 0:
-            players.append(player)
+    players = filter_threats(level_data.players)
     threats.extend(players)
 
     game_info = level_data.game_info
