@@ -431,12 +431,6 @@ class TestBombNearbyFunction(unittest.TestCase):
         ]
         self.assertEqual(bomb_nearby(item, hazards), {})
 
-    def test_bomb_is_idle(self):
-        # Case where bomb is nearby but idle
-        item = {"position": {"x": 100, "y": 100}}
-        hazards = [{"type": "bomb", "position": {"x": 110, "y": 110}, "status": "idle"}]
-        self.assertEqual(bomb_nearby(item, hazards), {})
-
     def test_no_hazards(self):
         # Case with an empty hazard list
         item = {"position": {"x": 100, "y": 100}}
@@ -484,15 +478,6 @@ class TestAssessAttackFunction(unittest.TestCase):
         updated_moves = assess_attack(own_player, target, moves)
         self.assertEqual(updated_moves, [])
 
-    def test_target_no_health(self):
-        # Case where the target has no health
-        own_player = {"position": {"x": 10, "y": 10}}
-        target = {"position": {"x": 15, "y": 15}, "health": 0}
-        moves = []
-
-        updated_moves = assess_attack(own_player, target, moves)
-        self.assertEqual(updated_moves, [])
-
     def test_target_no_health_field(self):
         # Case where the target has no health field
         own_player = {"position": {"x": 10, "y": 10}}
@@ -510,15 +495,6 @@ class TestAssessAttackFunction(unittest.TestCase):
 
         updated_moves = assess_attack(own_player, target, moves)
         self.assertEqual(updated_moves, ["special", "attack"])
-
-    def test_target_health_negative(self):
-        # Case where the target has negative health
-        own_player = {"position": {"x": 10, "y": 10}}
-        target = {"position": {"x": 15, "y": 15}, "health": -10}
-        moves = []
-
-        updated_moves = assess_attack(own_player, target, moves)
-        self.assertEqual(updated_moves, [])
 
 
 class TestAssessHealthNeedsFunction(unittest.TestCase):
@@ -695,7 +671,7 @@ class TestHandleIcicleThreatFunction(unittest.TestCase):
     def test_no_icicle_threat_out_of_range(self):
         # Case: Icicle hazard is out of range
         own_player = {"position": {"x": 100, "y": 100}, "id": 1}
-        hazards = [{"type": "icicle", "position": {"x": 200, "y": 200}, "owner_id": 2}]
+        hazards = [{"type": "icicle", "position": {"x": 400, "y": 400}, "owner_id": 2}]
         moves = []
 
         updated_moves = handle_icicle_threat(own_player, hazards, moves)

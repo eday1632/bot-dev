@@ -33,12 +33,8 @@ def exp_rate(own_player: dict, item: dict) -> float:
     }
 
     # Adjust experience for player type
-    if item["type"] == "player" and item["health"] > 0:
+    if item["type"] == "player":
         exps["player"] += item["levelling"]["level"] * 10
-
-    # No dead things
-    if item.get("attack_damage") is not None and item["health"] <= 0:
-        return 0
 
     # Special cases for chest and power-up
     if item["type"] in ["chest", "power_up"] and own_player["special_equipped"] not in [
@@ -80,24 +76,15 @@ def peripheral_danger(
     total_danger = 0
 
     for enemy in enemies:
-        if (
-            dist_squared_to(item["position"], enemy["position"]) < 100000
-            and enemy["health"] > 0
-        ):
+        if dist_squared_to(item["position"], enemy["position"]) < 100000:
             total_danger += enemy["attack_damage"]
 
     for player in players:
-        if (
-            dist_squared_to(item["position"], player["position"]) < 100000
-            and player["health"] > 0
-        ):
+        if dist_squared_to(item["position"], player["position"]) < 100000:
             total_danger += player["attack_damage"]
 
     for hazard in hazards:
-        if (
-            dist_squared_to(item["position"], hazard["position"]) < 60000
-            and hazard["status"] != "idle"
-        ):
+        if dist_squared_to(item["position"], hazard["position"]) < 60000:
             total_danger += hazard["attack_damage"]
 
     return total_danger > total_health
@@ -128,7 +115,6 @@ def losing_battle(own_player: dict, item: dict) -> bool:
     if (
         item.get("attack_damage") is not None
         and item["attack_damage"] >= own_player["health"]
-        and item["health"] > 0
     ):
         return True
     return False
@@ -166,7 +152,6 @@ def bomb_nearby(item: dict, hazards: list) -> dict:
         if (
             hazard["type"] == "bomb"
             and dist_squared_to(item["position"], hazard["position"]) < 50000
-            and hazard["status"] != "idle"
         ):
             return hazard
     return {}
@@ -178,7 +163,6 @@ def total_danger(own_player: dict, players: list, enemies: list, hazards: list) 
     for player in players:
         if (
             dist_squared_to(own_player["position"], player["position"]) < 100000
-            and player["health"] > 0
             and not player["is_frozen"]
         ):
             total_danger += player["attack_damage"]
@@ -186,16 +170,12 @@ def total_danger(own_player: dict, players: list, enemies: list, hazards: list) 
     for enemy in enemies:
         if (
             dist_squared_to(own_player["position"], enemy["position"]) < 100000
-            and enemy["health"] > 0
             and not enemy["is_frozen"]
         ):
             total_danger += enemy["attack_damage"]
 
     for hazard in hazards:
-        if (
-            dist_squared_to(own_player["position"], hazard["position"]) < 60000
-            and hazard["status"] != "idle"
-        ):
+        if dist_squared_to(own_player["position"], hazard["position"]) < 60000:
             total_danger += hazard["attack_damage"]
 
     return total_danger
@@ -208,10 +188,6 @@ def get_best_item(
     target = None
 
     for item in items:
-        # Skip items with zero or negative health
-        if item.get("health") is not None and item["health"] <= 0:
-            continue
-
         # Skip items based on various conditions
         if player_unprepared(own_player, item):
             continue
@@ -271,7 +247,6 @@ def print_exp_rate(game_info: dict, own_player: dict) -> None:
 def assess_attack(own_player, target, moves):
     if (
         target.get("health") is not None
-        and target["health"] > 0
         and dist_squared_to(own_player["position"], target["position"]) < 15625
     ):
         moves.append("attack")
@@ -308,7 +283,6 @@ def assess_zapper_use(own_player, target, moves):
         target["type"] in ["player", "tiny"]
         and dist_squared_to(own_player["position"], target["position"]) < 225000
         and not target["is_zapped"]
-        and target["health"] > 0
     ):
         moves.append({"use": "speed_zapper"})
     return moves
@@ -367,10 +341,6 @@ def assess_shockwave_use(own_player, target):
 def threat_nearby(own_player, threats):
     for threat in threats:
         if dist_squared_to(own_player["position"], threat["position"]) < 50000:
-            if threat.get("health") is not None and threat["health"] <= 0:
-                continue
-            if threat["type"] == "bomb" and threat["status"] == "idle":
-                continue
             return threat
     return {}
 
@@ -387,13 +357,25 @@ class LevelData(BaseModel):
 def play(level_data: LevelData):
     moves = []
     own_player = level_data.own_player
-    enemies = level_data.enemies
-    players = level_data.players
-    hazards = level_data.hazards
     threats = []
+
+    enemies = []
+    for enemy in level_data.enemies:
+        if enemy["health"] > 0:
+            enemies.append(enemy)
     threats.extend(enemies)
-    threats.extend(players)
+
+    hazards = []
+    for hazard in level_data.hazards:
+        if hazard["status"] != "idle":
+            hazards.append(hazard)
     threats.extend(hazards)
+
+    players = []
+    for player in level_data.players:
+        if player["health"] > 0:
+            players.append(player)
+    threats.extend(players)
 
     game_info = level_data.game_info
     items = level_data.items
@@ -405,7 +387,6 @@ def play(level_data: LevelData):
 
     print_exp_rate(game_info, own_player)
 
-    # Apply skill points
     moves = apply_skill_points(own_player, moves)
 
     target = get_best_item(own_player, potential_targets, hazards, enemies, players)
@@ -438,7 +419,6 @@ def play(level_data: LevelData):
                 and 50000
                 < dist_squared_to(enemy["position"], own_player["position"])
                 < bomb_distance
-                and enemy["health"] > 0
                 and target["id"] != enemy["id"]
                 and len(own_player["collisions"]) == 0
             ):
@@ -453,7 +433,6 @@ def play(level_data: LevelData):
                 and 50000
                 < dist_squared_to(enemy["position"], own_player["position"])
                 < bomb_distance
-                and enemy["health"] > 0
                 and target["id"] != enemy["id"]
                 and len(own_player["collisions"]) == 0
             ):
@@ -468,7 +447,6 @@ def play(level_data: LevelData):
                 and 50000
                 < dist_squared_to(enemy["position"], own_player["position"])
                 < bomb_distance
-                and enemy["health"] > 0
                 and target["id"] != enemy["id"]
                 and len(own_player["collisions"]) == 0
             ):
@@ -483,7 +461,6 @@ def play(level_data: LevelData):
                 and 50000
                 < dist_squared_to(enemy["position"], own_player["position"])
                 < bomb_distance
-                and enemy["health"] > 0
                 and target["id"] != enemy["id"]
                 and len(own_player["collisions"]) == 0
             ):
@@ -491,10 +468,9 @@ def play(level_data: LevelData):
                 break
 
             if (
-                dist_squared_to(enemy["position"], own_player["position"]) < 40000
+                dist_squared_to(enemy["position"], own_player["position"]) < 50000
                 and own_player["is_shield_ready"]
                 and not bomb
-                and enemy["health"] > 0
                 and own_player["health"] > own_player["attack_damage"] * 2.5
                 and target["id"] == enemy["id"]
             ):
@@ -511,7 +487,6 @@ def play(level_data: LevelData):
                 and 50000
                 < dist_squared_to(player["position"], own_player["position"])
                 < bomb_distance
-                and player["health"] > 0
                 and len(own_player["collisions"]) == 0
                 and target["id"] != player["id"]
             ):
@@ -526,7 +501,6 @@ def play(level_data: LevelData):
                 and 50000
                 < dist_squared_to(player["position"], own_player["position"])
                 < bomb_distance
-                and player["health"] > 0
                 and len(own_player["collisions"]) == 0
                 and target["id"] != player["id"]
             ):
@@ -541,7 +515,6 @@ def play(level_data: LevelData):
                 and 50000
                 < dist_squared_to(player["position"], own_player["position"])
                 < bomb_distance
-                and player["health"] > 0
                 and len(own_player["collisions"]) == 0
                 and target["id"] != player["id"]
             ):
@@ -556,7 +529,6 @@ def play(level_data: LevelData):
                 and 50000
                 < dist_squared_to(player["position"], own_player["position"])
                 < bomb_distance
-                and player["health"] > 0
                 and len(own_player["collisions"]) == 0
                 and target["id"] != player["id"]
             ):
@@ -564,10 +536,9 @@ def play(level_data: LevelData):
                 break
 
             if (
-                dist_squared_to(player["position"], own_player["position"]) < 40000
+                dist_squared_to(player["position"], own_player["position"]) < 50000
                 and own_player["is_shield_ready"]
                 and not bomb
-                and player["health"] > 0
                 and own_player["health"] > own_player["attack_damage"] * 2.5
                 and target["id"] == player["id"]
             ):
@@ -592,7 +563,7 @@ def play(level_data: LevelData):
     moves = handle_icicle_threat(own_player, hazards, moves)
 
     # Handle bomb response
-    if bomb and bomb["status"] != "idle":
+    if bomb:
         space = 100
         moves.append("shield")
         target["position"]["x"] = (
