@@ -45,8 +45,8 @@ def exp_rate(own_player: dict, item: dict) -> float:
         "bomb",
         "freeze",
     ]:
-        exps["chest"] = 10000
-        exps["power_up"] = 10000
+        exps["chest"] = 5000
+        exps["power_up"] = 5000
 
     # Special case for tiny type
     if (
@@ -55,7 +55,7 @@ def exp_rate(own_player: dict, item: dict) -> float:
         and not item["is_zapped"]
         and not item["is_frozen"]
     ):
-        exps["tiny"] = 60
+        exps["tiny"] = 50
 
     # Calculate distance, travel time, and kill time
     distance = dist_squared_to(item["position"], own_player["position"])
@@ -64,7 +64,7 @@ def exp_rate(own_player: dict, item: dict) -> float:
 
     if item.get("health") is not None:  # Check if the item has a health attribute
         if item["type"] == "player":
-            item["health"] += 150  # Assume they have an average of 1.5 potions
+            item["health"] += 150  # Assume players have an average of 1.5 potions
         kill_time = (
             item["health"] / own_player["attack_damage"]
         ) * 0.5  # Assuming attack cooldown
@@ -250,7 +250,9 @@ def print_exp_rate(game_info: dict, own_player: dict) -> None:
     # Log exp rate periodically
     global CURRENT_EXP_RATE
     if game_info["time_remaining_s"] % 5 == 0:
-        exp_rate = own_player["score"] / (1800 - game_info["time_remaining_s"])
+        exp_rate = round(
+            own_player["score"] / (1801 - game_info["time_remaining_s"]), 2
+        )
         if CURRENT_EXP_RATE != exp_rate:
             CURRENT_EXP_RATE = exp_rate
             print(f"Score rate: {CURRENT_EXP_RATE}")
@@ -264,6 +266,102 @@ def assess_attack(own_player, target, moves):
     ):
         moves.append("attack")
     return moves
+
+
+def assess_health_needs(own_player, total_danger_value, moves):
+    # Handle health and potion usage
+    if total_danger_value > own_player["health"] * 1.2:
+        moves.append({"use": "big_potion"})
+        if not own_player["is_cloaked"]:
+            moves.append({"use": "ring"})
+    elif own_player["health"] / own_player["max_health"] < 0.4:
+        moves.append({"use": "big_potion"})
+        if not own_player["is_cloaked"]:
+            moves.append({"use": "ring"})
+    elif (
+        own_player["health"] / own_player["max_health"] < 0.5
+        and len(own_player["items"]["big_potions"]) > 1
+    ):
+        moves.append({"use": "big_potion"})
+        if not own_player["is_cloaked"]:
+            moves.append({"use": "ring"})
+    elif (
+        own_player["health"] / own_player["max_health"] < 0.6
+        and len(own_player["items"]["big_potions"]) > 4
+    ):
+        moves.append({"use": "big_potion"})
+    return moves
+
+
+def assess_zapper_use(own_player, target, moves):
+    if (
+        target["type"] in ["player", "tiny"]
+        and dist_squared_to(own_player["position"], target["position"]) < 225000
+        and not target["is_zapped"]
+    ):
+        moves.append({"use": "speed_zapper"})
+    return moves
+
+
+def handle_bomb_threat(own_player, bomb):
+    pass
+
+
+def handle_icicle_threat(own_player, hazards, moves):
+    for hazard in hazards:
+        if (
+            hazard["type"] == "icicle"
+            and dist_squared_to(hazard["position"], own_player["position"]) < 20625
+            and own_player["id"] != hazard["owner_id"]
+        ):
+            moves.append("shield")
+            break
+    return moves
+
+
+def handle_collisions(own_player, target, moves):
+    if len(own_player["collisions"]) > 0:
+        target["position"]["x"] = own_player["position"]["x"]
+        target["position"]["y"] = own_player["position"]["y"]
+        for collision in own_player["collisions"]:
+            if collision["type"] in [
+                "wolf",
+                "ghoul",
+                "tiny",
+                "minotaur",
+                "player",
+                "chest",
+            ]:
+                moves.append("attack")
+            if collision["type"] != target["type"]:
+                target["position"]["x"] -= collision["relative_position"]["x"] * 3
+                target["position"]["y"] -= collision["relative_position"]["y"] * 3
+
+        moves.append({"move_to": target["position"]})
+    return moves
+
+
+def assess_bomb_use(own_player, target):
+    pass
+
+
+def assess_icicle_use(own_player, target):
+    pass
+
+
+def assess_shockwave_use(own_player, target):
+    pass
+
+
+def threat_nearby(own_player, threats):
+    for threat in threats:
+        if dist_squared_to(own_player["position"], threat["position"]) < 50000:
+            if threat.get("health") is not None and threat["health"] <= 0:
+                continue
+            if threat["type"] == "bomb" and threat["status"] == "idle":
+                continue
+            return threat
+    return {}
 
 
 class LevelData(BaseModel):
@@ -281,9 +379,13 @@ def play(level_data: LevelData):
     enemies = level_data.enemies
     players = level_data.players
     hazards = level_data.hazards
+    threats = []
+    threats.extend(enemies)
+    threats.extend(players)
+    threats.extend(hazards)
+
     game_info = level_data.game_info
     items = level_data.items
-    zap_distance = 225000
 
     potential_targets = []
     potential_targets.extend(items)
@@ -304,58 +406,16 @@ def play(level_data: LevelData):
     moves.append("dash")
 
     bomb = bomb_nearby(own_player, hazards)
-
     total_danger_value = total_danger(own_player, players, enemies, hazards)
 
+    moves = assess_health_needs(own_player, total_danger_value, moves)
     moves = assess_attack(own_player, target, moves)
+    moves = assess_zapper_use(own_player, target, moves)
 
-    # Handle health and potion usage
-    if (
-        total_danger_value > own_player["health"]
-        or (own_player["health"] / own_player["max_health"] < 0.4)
-        or (
-            own_player["health"] / own_player["max_health"] < 0.5
-            and len(own_player["items"]["big_potions"]) > 1
-        )
-        or (
-            own_player["health"] / own_player["max_health"] < 0.6
-            and len(own_player["items"]["big_potions"]) > 4
-        )
-    ):
-        moves.append({"use": "big_potion"})
-        if not own_player["is_cloaked"]:
-            moves.append({"use": "ring"})
-
-    # Handle speed zapper usage
-    if (
-        target["type"] in ["player", "tiny"]
-        and dist_squared_to(own_player["position"], target["position"]) < zap_distance
-        and not getattr(target, "is_zapped", False)
-    ):
-        moves.append({"use": "speed_zapper"})
-
-    # Handle collisions
-    if len(own_player["collisions"]) > 0:
-        for collision in own_player["collisions"]:
-            if collision["type"] in [
-                "wolf",
-                "ghoul",
-                "tiny",
-                "minotaur",
-                "player",
-                "chest",
-            ]:
-                moves.append("attack")
-                moves.append("shield")
-                if own_player["special_equipped"] != "bomb":
-                    moves.append("special")
-                break
-        target["position"]["x"] += random.randint(-400, 400)
-        target["position"]["y"] += random.randint(-400, 400)
+    moves = handle_collisions(own_player, target, moves)
 
     # Handle bomb-related logic
-    # if no collisions drop bomb
-    bomb_distance = 140000
+    bomb_distance = 160000
     if own_player["special_equipped"] == "bomb":
         # Check for enemies
         for enemy in enemies:
@@ -507,8 +567,7 @@ def play(level_data: LevelData):
         if (
             target["type"] in ["ghoul", "tiny", "minotaur", "player"]
             and not target["is_frozen"]
-            and dist_squared_to(target["position"], own_player["position"])
-            < zap_distance
+            and dist_squared_to(target["position"], own_player["position"]) < 225000
             and not own_player["shield_raised"]
         ):
             moves.append("special")
@@ -519,21 +578,12 @@ def play(level_data: LevelData):
         elif peripheral_danger(own_player, own_player, enemies, players, hazards):
             moves.append("special")
 
-    # Handle icicle hazard
-    for hazard in hazards:
-        if (
-            hazard["type"] == "icicle"
-            and dist_squared_to(hazard["position"], own_player["position"]) < 17625
-            and own_player["id"] != hazard["owner_id"]
-        ):
-            moves.append("shield")
+    moves = handle_icicle_threat(own_player, hazards, moves)
 
     # Handle bomb response
     if bomb and bomb["status"] != "idle":
-        space = 45
+        space = 100
         moves.append("shield")
-        if bomb["attack_damage"] > own_player["health"]:
-            moves.append({"use": "big_potion"})
         target["position"]["x"] = (
             own_player["position"]["x"] - space
             if bomb["position"]["x"] > own_player["position"]["x"]

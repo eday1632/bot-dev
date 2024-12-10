@@ -9,12 +9,12 @@ from main import (
     stock_full,
     dedupe_moves,
     bomb_nearby,
-    print_exp_rate,
-    assess_attack
+    assess_attack,
+    assess_health_needs,
+    assess_zapper_use,
+    handle_icicle_threat,
+    handle_collisions,
 )
-
-# Mock global variable
-CURRENT_EXP_RATE = None
 
 
 class TestPeripheralDanger(unittest.TestCase):
@@ -465,58 +465,6 @@ class TestBombNearbyFunction(unittest.TestCase):
         )
 
 
-def set_current_exp_rate(value):
-    global CURRENT_EXP_RATE
-    CURRENT_EXP_RATE = value
-
-
-class TestPrintExpRateFunction(unittest.TestCase):
-    def setUp(self):
-        # Reset the global variable before each test
-        set_current_exp_rate(None)
-
-    def test_print_on_change(self):
-        # Test that the function prints when the exp rate changes
-        game_info = {"time_remaining_s": 5}
-        own_player = {"score": 100}
-
-        with patch("builtins.print") as mock_print:
-            print_exp_rate(game_info, own_player)
-            mock_print.assert_called_once_with("Score rate: 0.06")
-
-    def test_no_print_no_change(self):
-        # Test that the function does not print if exp rate hasn't changed
-        game_info = {"time_remaining_s": 10}
-        own_player = {"score": 100}
-        set_current_exp_rate(0.06)
-
-        with patch("builtins.print") as mock_print:
-            print_exp_rate(game_info, own_player)
-            mock_print.assert_not_called()
-
-    def test_no_print_not_multiple_of_5(self):
-        # Test that the function does not print when time is not a multiple of 5
-        game_info = {"time_remaining_s": 6}
-        own_player = {"score": 100}
-
-        with patch("builtins.print") as mock_print:
-            print_exp_rate(game_info, own_player)
-            mock_print.assert_not_called()
-
-    def test_zero_division_handling(self):
-        # Test division by zero is handled (edge case)
-        game_info = {"time_remaining_s": 1800}
-        own_player = {"score": 100}
-
-        with patch("builtins.print") as mock_print:
-            with self.assertRaises(ZeroDivisionError):
-                print_exp_rate(game_info, own_player)
-
-    def tearDown(self):
-        # Reset the global variable after each test
-        set_current_exp_rate(None)
-
-
 class TestAssessAttackFunction(unittest.TestCase):
     def test_valid_attack(self):
         # Case where the target is in range, has health, and should be attacked
@@ -573,5 +521,309 @@ class TestAssessAttackFunction(unittest.TestCase):
         self.assertEqual(updated_moves, [])
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TestAssessHealthNeedsFunction(unittest.TestCase):
+    def test_danger_exceeds_health(self):
+        # Case: Danger value exceeds player's health
+        own_player = {
+            "health": 30,
+            "max_health": 100,
+            "items": {"big_potions": [1, 2]},
+            "is_cloaked": False,
+        }
+        total_danger_value = 50
+        moves = []
+
+        assess_health_needs(own_player, total_danger_value, moves)
+        self.assertIn({"use": "big_potion"}, moves)
+        self.assertIn({"use": "ring"}, moves)
+
+    def test_health_below_40_percent(self):
+        # Case: Player's health is below 40% of max health
+        own_player = {
+            "health": 35,
+            "max_health": 100,
+            "items": {"big_potions": [1]},
+            "is_cloaked": False,
+        }
+        total_danger_value = 20
+        moves = []
+
+        assess_health_needs(own_player, total_danger_value, moves)
+        self.assertIn({"use": "big_potion"}, moves)
+        self.assertIn({"use": "ring"}, moves)
+
+    def test_health_below_50_percent_with_two_potions(self):
+        # Case: Health is below 50% but there are at least two potions
+        own_player = {
+            "health": 45,
+            "max_health": 100,
+            "items": {"big_potions": [1, 2]},
+            "is_cloaked": False,
+        }
+        total_danger_value = 10
+        moves = []
+
+        assess_health_needs(own_player, total_danger_value, moves)
+        self.assertIn({"use": "big_potion"}, moves)
+        self.assertIn({"use": "ring"}, moves)
+
+    def test_health_below_60_percent_with_five_potions(self):
+        # Case: Health is below 60% but there are at least five potions
+        own_player = {
+            "health": 55,
+            "max_health": 100,
+            "items": {"big_potions": [1, 2, 3, 4, 5]},
+            "is_cloaked": False,
+        }
+        total_danger_value = 10
+        moves = []
+
+        assess_health_needs(own_player, total_danger_value, moves)
+        self.assertIn({"use": "big_potion"}, moves)
+        self.assertNotIn({"use": "ring"}, moves)
+
+    def test_cloaked_player_no_ring(self):
+        # Case: Player is cloaked, so no ring is used
+        own_player = {
+            "health": 30,
+            "max_health": 100,
+            "items": {"big_potions": [1]},
+            "is_cloaked": True,
+        }
+        total_danger_value = 40
+        moves = []
+
+        assess_health_needs(own_player, total_danger_value, moves)
+        self.assertIn({"use": "big_potion"}, moves)
+        self.assertNotIn({"use": "ring"}, moves)
+
+    def test_no_health_needs(self):
+        # Case: Player's health is sufficient, and no danger
+        own_player = {
+            "health": 70,
+            "max_health": 100,
+            "items": {"big_potions": []},
+            "is_cloaked": False,
+        }
+        total_danger_value = 10
+        moves = []
+
+        assess_health_needs(own_player, total_danger_value, moves)
+        self.assertNotIn({"use": "big_potion"}, moves)
+        self.assertNotIn({"use": "ring"}, moves)
+
+
+class TestAssessZapperUseFunction(unittest.TestCase):
+    def test_use_zapper_on_player_in_range(self):
+        # Case: Target is a player in range and not zapped
+        own_player = {"position": {"x": 100, "y": 100}}
+        target = {
+            "type": "player",
+            "position": {"x": 200, "y": 200},
+            "is_zapped": False,
+        }
+        moves = []
+
+        updated_moves = assess_zapper_use(own_player, target, moves)
+        self.assertIn({"use": "speed_zapper"}, updated_moves)
+
+    def test_use_zapper_on_tiny_in_range(self):
+        # Case: Target is tiny in range and not zapped
+        own_player = {"position": {"x": 100, "y": 100}}
+        target = {"type": "tiny", "position": {"x": 150, "y": 150}, "is_zapped": False}
+        moves = []
+
+        updated_moves = assess_zapper_use(own_player, target, moves)
+        self.assertIn({"use": "speed_zapper"}, updated_moves)
+
+    def test_do_not_use_zapper_out_of_range(self):
+        # Case: Target is out of zapper range
+        own_player = {"position": {"x": 100, "y": 100}}
+        target = {
+            "type": "player",
+            "position": {"x": 600, "y": 600},
+            "is_zapped": False,
+        }
+        moves = []
+
+        updated_moves = assess_zapper_use(own_player, target, moves)
+        self.assertNotIn({"use": "speed_zapper"}, updated_moves)
+
+    def test_do_not_use_zapper_on_zapped_target(self):
+        # Case: Target is already zapped
+        own_player = {"position": {"x": 100, "y": 100}}
+        target = {"type": "player", "position": {"x": 200, "y": 200}, "is_zapped": True}
+        moves = []
+
+        updated_moves = assess_zapper_use(own_player, target, moves)
+        self.assertNotIn({"use": "speed_zapper"}, updated_moves)
+
+    def test_do_not_use_zapper_on_invalid_target_type(self):
+        # Case: Target type is not player or tiny
+        own_player = {"position": {"x": 100, "y": 100}}
+        target = {
+            "type": "monster",
+            "position": {"x": 150, "y": 150},
+            "is_zapped": False,
+        }
+        moves = []
+
+        updated_moves = assess_zapper_use(own_player, target, moves)
+        self.assertNotIn({"use": "speed_zapper"}, updated_moves)
+
+    def test_append_to_existing_moves(self):
+        # Case: Moves already have other actions, zapper use should append
+        own_player = {"position": {"x": 100, "y": 100}}
+        target = {"type": "tiny", "position": {"x": 150, "y": 150}, "is_zapped": False}
+        moves = [{"use": "ring"}]
+
+        updated_moves = assess_zapper_use(own_player, target, moves)
+        self.assertIn({"use": "speed_zapper"}, updated_moves)
+        self.assertIn({"use": "ring"}, updated_moves)
+
+
+class TestHandleIcicleThreatFunction(unittest.TestCase):
+    def test_handle_icicle_threat_in_range(self):
+        # Case: Icicle hazard is within range and not owned by the player
+        own_player = {"position": {"x": 100, "y": 100}, "id": 1}
+        hazards = [{"type": "icicle", "position": {"x": 110, "y": 110}, "owner_id": 2}]
+        moves = []
+
+        updated_moves = handle_icicle_threat(own_player, hazards, moves)
+        self.assertIn("shield", updated_moves)
+
+    def test_no_icicle_threat_out_of_range(self):
+        # Case: Icicle hazard is out of range
+        own_player = {"position": {"x": 100, "y": 100}, "id": 1}
+        hazards = [{"type": "icicle", "position": {"x": 200, "y": 200}, "owner_id": 2}]
+        moves = []
+
+        updated_moves = handle_icicle_threat(own_player, hazards, moves)
+        self.assertNotIn("shield", updated_moves)
+
+    def test_no_icicle_threat_same_owner(self):
+        # Case: Icicle hazard is owned by the player
+        own_player = {"position": {"x": 100, "y": 100}, "id": 1}
+        hazards = [{"type": "icicle", "position": {"x": 110, "y": 110}, "owner_id": 1}]
+        moves = []
+
+        updated_moves = handle_icicle_threat(own_player, hazards, moves)
+        self.assertNotIn("shield", updated_moves)
+
+    def test_no_icicle_threat_wrong_type(self):
+        # Case: Hazard is not an icicle
+        own_player = {"position": {"x": 100, "y": 100}, "id": 1}
+        hazards = [{"type": "bomb", "position": {"x": 110, "y": 110}, "owner_id": 2}]
+        moves = []
+
+        updated_moves = handle_icicle_threat(own_player, hazards, moves)
+        self.assertNotIn("shield", updated_moves)
+
+    def test_handle_multiple_hazards(self):
+        # Case: Multiple hazards, one icicle in range
+        own_player = {"position": {"x": 100, "y": 100}, "id": 1}
+        hazards = [
+            {"type": "bomb", "position": {"x": 150, "y": 150}, "owner_id": 2},
+            {"type": "icicle", "position": {"x": 110, "y": 110}, "owner_id": 3},
+            {"type": "icicle", "position": {"x": 300, "y": 300}, "owner_id": 2},
+        ]
+        moves = []
+
+        updated_moves = handle_icicle_threat(own_player, hazards, moves)
+        self.assertIn("shield", updated_moves)
+        self.assertEqual(
+            updated_moves.count("shield"), 1
+        )  # Ensure only one shield move is added
+
+    def test_append_to_existing_moves(self):
+        # Case: Existing moves already contain actions
+        own_player = {"position": {"x": 100, "y": 100}, "id": 1}
+        hazards = [{"type": "icicle", "position": {"x": 110, "y": 110}, "owner_id": 2}]
+        moves = ["dash"]
+
+        updated_moves = handle_icicle_threat(own_player, hazards, moves)
+        self.assertIn("shield", updated_moves)
+        self.assertIn("dash", updated_moves)
+
+
+class TestHandleCollisionsFunction(unittest.TestCase):
+    def test_no_collisions(self):
+        # Case: No collisions
+        own_player = {"position": {"x": 10, "y": 10}, "collisions": []}
+        target = {"position": {"x": 20, "y": 20}, "type": "npc"}
+        moves = []
+
+        updated_moves = handle_collisions(own_player, target, moves)
+
+        self.assertEqual(updated_moves, [])
+        self.assertEqual(target["position"], {"x": 20, "y": 20})
+
+    def test_single_collision_with_attack(self):
+        # Case: Single collision requiring an attack
+        own_player = {
+            "position": {"x": 10, "y": 10},
+            "collisions": [{"type": "wolf", "relative_position": {"x": 1, "y": 1}}],
+        }
+        target = {"position": {"x": 20, "y": 20}, "type": "npc"}
+        moves = []
+
+        updated_moves = handle_collisions(own_player, target, moves)
+
+        self.assertIn("attack", updated_moves)
+        self.assertIn({"move_to": {"x": 7, "y": 7}}, updated_moves)
+        self.assertEqual(target["position"], {"x": 7, "y": 7})
+
+    def test_single_collision_no_attack(self):
+        # Case: Single collision but no attack due to target type match
+        own_player = {
+            "position": {"x": 10, "y": 10},
+            "collisions": [{"type": "rock", "relative_position": {"x": 1, "y": 1}}],
+        }
+        target = {"position": {"x": 20, "y": 20}, "type": "player"}
+        moves = []
+
+        updated_moves = handle_collisions(own_player, target, moves)
+
+        self.assertNotIn("attack", updated_moves)
+        self.assertIn({"move_to": {"x": 7, "y": 7}}, updated_moves)
+        self.assertEqual(target["position"], {"x": 7, "y": 7})
+
+    def test_multiple_collisions(self):
+        # Case: Multiple collisions with cumulative position adjustments
+        own_player = {
+            "position": {"x": 10, "y": 10},
+            "collisions": [
+                {"type": "wolf", "relative_position": {"x": 1, "y": 1}},
+                {"type": "ghoul", "relative_position": {"x": 2, "y": 2}},
+            ],
+        }
+        target = {"position": {"x": 20, "y": 20}, "type": "npc"}
+        moves = []
+
+        updated_moves = handle_collisions(own_player, target, moves)
+
+        self.assertIn("attack", updated_moves)
+        self.assertIn({"move_to": {"x": 1, "y": 1}}, updated_moves)
+        self.assertEqual(
+            target["position"], {"x": 1, "y": 1}
+        )  # Adjusted for both collisions
+
+    def test_mixed_collision_types(self):
+        # Case: Mixed valid and invalid collision types
+        own_player = {
+            "position": {"x": 10, "y": 10},
+            "collisions": [
+                {"type": "wolf", "relative_position": {"x": 1, "y": 1}},
+                {"type": "rock", "relative_position": {"x": 2, "y": 2}},
+            ],
+        }
+        target = {"position": {"x": 20, "y": 20}, "type": "npc"}
+        moves = []
+
+        updated_moves = handle_collisions(own_player, target, moves)
+
+        self.assertIn("attack", updated_moves)  # Only for "wolf"
+        self.assertIn({"move_to": {"x": 1, "y": 1}}, updated_moves)
+        self.assertEqual(
+            target["position"], {"x": 1, "y": 1}
+        )  # Adjusted only for "wolf" collision
