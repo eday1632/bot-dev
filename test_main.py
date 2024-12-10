@@ -2,21 +2,94 @@ import unittest
 from unittest.mock import patch
 
 from main import (
-    peripheral_danger,
-    dist_squared_to,
     apply_skill_points,
-    losing_battle,
-    stock_full,
-    dedupe_moves,
-    bomb_nearby,
     assess_attack,
     assess_health_needs,
     assess_zapper_use,
-    handle_icicle_threat,
-    handle_collisions,
+    bomb_nearby,
+    dedupe_moves,
+    dist_squared_to,
     filter_threats,
     handle_bomb_threat,
+    handle_collisions,
+    handle_icicle_threat,
+    losing_battle,
+    peripheral_danger,
+    player_unprepared,
+    stock_full,
 )
+
+
+class TestPlayerUnpreparedFunction(unittest.TestCase):
+    def test_no_big_potions_and_low_health(self):
+        # Case: Player has no big potions and low health, item is not a big potion
+        own_player = {
+            "items": {"big_potions": []},
+            "health": 50,
+            "special_equipped": "shield",
+        }
+        item = {"type": "wolf"}
+        self.assertTrue(player_unprepared(own_player, item))
+
+    def test_no_big_potions_but_sufficient_health(self):
+        # Case: Player has no big potions but health is sufficient
+        own_player = {
+            "items": {"big_potions": []},
+            "health": 90,
+            "special_equipped": "shield",
+        }
+        item = {"type": "wolf"}
+        self.assertFalse(player_unprepared(own_player, item))
+
+    def test_item_is_big_potion(self):
+        # Case: Item is a big potion
+        own_player = {
+            "items": {"big_potions": []},
+            "health": 50,
+            "special_equipped": "shield",
+        }
+        item = {"type": "big_potion"}
+        self.assertFalse(player_unprepared(own_player, item))
+
+    def test_chest_or_power_up_with_no_bomb(self):
+        # Case: Item is chest or power_up and special equipped is not bomb
+        own_player = {
+            "items": {"big_potions": [1]},
+            "health": 100,
+            "special_equipped": "shield",
+        }
+        item = {"type": "chest"}
+        self.assertFalse(player_unprepared(own_player, item))
+
+    def test_shockwave_with_special_equipped(self):
+        # Case: Item has power "shockwave" and player has a special equipped
+        own_player = {
+            "items": {"big_potions": [1]},
+            "health": 100,
+            "special_equipped": "shield",
+        }
+        item = {"power": "shockwave"}
+        self.assertTrue(player_unprepared(own_player, item))
+
+    def test_shockwave_without_special_equipped(self):
+        # Case: Item has power "shockwave" but no special is equipped
+        own_player = {
+            "items": {"big_potions": [1]},
+            "health": 100,
+            "special_equipped": None,
+        }
+        item = {"power": "shockwave"}
+        self.assertFalse(player_unprepared(own_player, item))
+
+    def test_other_items_with_no_conditions_met(self):
+        # Case: None of the conditions are met for other item types
+        own_player = {
+            "items": {"big_potions": [1]},
+            "health": 100,
+            "special_equipped": "shield",
+        }
+        item = {"type": "wolf"}
+        self.assertFalse(player_unprepared(own_player, item))
 
 
 class TestHandleBombThreatFunction(unittest.TestCase):

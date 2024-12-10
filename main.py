@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
+import json
 import random
 
 CURRENT_EXP_RATE = 0
@@ -44,7 +45,7 @@ def exp_rate(own_player: dict, item: dict) -> float:
         exps["chest"] = 5000
         exps["power_up"] = 5000
 
-    # Special case for tiny type
+    # Special case for tinys
     if (
         item["type"] == "tiny"
         and len(own_player["items"]["speed_zappers"]) == 0
@@ -55,6 +56,10 @@ def exp_rate(own_player: dict, item: dict) -> float:
 
     # Calculate distance, travel time, and kill time
     distance = dist_squared_to(item["position"], own_player["position"])
+    if distance > 100000:
+        distance -= 50000  # Dash proxy
+    if distance > 200000:
+        distance -= 50000  # Dash proxy
     travel_time = distance / my_speed
     kill_time = 0
 
@@ -114,7 +119,7 @@ def apply_skill_points(own_player: dict, moves: list) -> list:
 def losing_battle(own_player: dict, item: dict) -> bool:
     if (
         item.get("attack_damage") is not None
-        and item["attack_damage"] >= own_player["health"]
+        and item["attack_damage"] >= own_player["health"] * 1.2
     ):
         return True
     return False
@@ -134,7 +139,7 @@ def stock_full(own_player: dict, item: dict) -> bool:
 
 
 def player_unprepared(own_player: dict, item: dict) -> bool:
-    if len(own_player["items"]["big_potions"]) < 1 and own_player["health"] < 85:
+    if len(own_player["items"]["big_potions"]) == 0 and own_player["health"] < 85:
         if item["type"] != "big_potion":
             return True
     elif (
@@ -188,7 +193,10 @@ def get_best_item(
     target = None
 
     for item in items:
-        if item["type"] == "tiny" and dist_squared_to(own_player["position"], item["position"]) < 16500:
+        if (
+            item["type"] == "tiny"
+            and dist_squared_to(own_player["position"], item["position"]) < 16500
+        ):
             return item
 
         # Skip items based on various conditions
@@ -377,6 +385,9 @@ def play(level_data: LevelData):
     moves = []
     own_player = level_data.own_player
     threats = []
+    if own_player["health"] <= 0:
+        with open("/Users/dastardly/Desktop/bot-deaths.txt", "a") as f:
+            f.write(str(level_data))
 
     enemies = filter_threats(level_data.enemies)
     threats.extend(enemies)
