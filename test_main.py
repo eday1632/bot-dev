@@ -16,71 +16,7 @@ from main import (
     handle_icicle_threat,
     losing_battle,
     peripheral_danger,
-    player_unprepared,
-    stock_full,
 )
-
-
-class TestPlayerUnpreparedFunction(unittest.TestCase):
-    def test_no_big_potions_and_low_health(self):
-        # Case: Player has no big potions and low health, item is not a big potion
-        own_player = {
-            "items": {"big_potions": []},
-            "health": 50,
-            "special_equipped": "shield",
-        }
-        item = {"type": "wolf"}
-        self.assertTrue(player_unprepared(own_player, item))
-
-    def test_no_big_potions_but_sufficient_health(self):
-        # Case: Player has no big potions but health is sufficient
-        own_player = {
-            "items": {"big_potions": []},
-            "health": 90,
-            "special_equipped": "shield",
-        }
-        item = {"type": "wolf"}
-        self.assertFalse(player_unprepared(own_player, item))
-
-    def test_item_is_big_potion(self):
-        # Case: Item is a big potion
-        own_player = {
-            "items": {"big_potions": []},
-            "health": 50,
-            "special_equipped": "shield",
-        }
-        item = {"type": "big_potion"}
-        self.assertFalse(player_unprepared(own_player, item))
-
-    def test_chest_or_power_up_with_no_bomb(self):
-        # Case: Item is chest or power_up and special equipped is not bomb
-        own_player = {
-            "items": {"big_potions": [1]},
-            "health": 100,
-            "special_equipped": "freeze",
-        }
-        item = {"type": "chest"}
-        self.assertFalse(player_unprepared(own_player, item))
-
-    def test_shockwave_with_special_equipped(self):
-        # Case: Item has power "shockwave" and player has a special equipped
-        own_player = {
-            "items": {"big_potions": [1]},
-            "health": 100,
-            "special_equipped": "shockwave",
-        }
-        item = {"power": "shockwave", "type": "power_up"}
-        self.assertFalse(player_unprepared(own_player, item))
-
-    def test_other_items_with_no_conditions_met(self):
-        # Case: None of the conditions are met for other item types
-        own_player = {
-            "items": {"big_potions": [1]},
-            "health": 100,
-            "special_equipped": None,
-        }
-        item = {"type": "wolf"}
-        self.assertFalse(player_unprepared(own_player, item))
 
 
 class TestHandleBombThreatFunction(unittest.TestCase):
@@ -512,48 +448,6 @@ class TestLosingBattle(unittest.TestCase):
             msg="Should raise KeyError if own_player does not have a health key.",
         ):
             losing_battle(own_player, item)
-
-
-class TestStockFullFunction(unittest.TestCase):
-    def test_ring_stock_full(self):
-        # Case where ring stock is full
-        own_player = {
-            "items": {"rings": [1, 2, 3, 4], "speed_zappers": [], "big_potions": []}
-        }
-        item = {"type": "ring"}
-        self.assertTrue(stock_full(own_player, item))
-
-        # Case where ring stock is not full
-        own_player["items"]["rings"] = [1, 2, 3]
-        self.assertFalse(stock_full(own_player, item))
-
-    def test_speed_zapper_stock_full(self):
-        # Case where speed zapper stock is full
-        own_player = {"items": {"rings": [], "speed_zappers": [1], "big_potions": []}}
-        item = {"type": "speed_zapper"}
-        self.assertTrue(stock_full(own_player, item))
-
-        # Case where speed zapper stock is not full
-        own_player["items"]["speed_zappers"] = []
-        self.assertFalse(stock_full(own_player, item))
-
-    def test_big_potion_stock_full(self):
-        # Case where big potion stock is full
-        own_player = {
-            "items": {"rings": [], "speed_zappers": [], "big_potions": [1, 2, 3, 4, 5]}
-        }
-        item = {"type": "big_potion"}
-        self.assertTrue(stock_full(own_player, item))
-
-        # Case where big potion stock is not full
-        own_player["items"]["big_potions"] = [1, 2, 3, 4]
-        self.assertFalse(stock_full(own_player, item))
-
-    def test_other_item_type(self):
-        # Case for an unhandled item type
-        own_player = {"items": {"rings": [], "speed_zappers": [], "big_potions": []}}
-        item = {"type": "unknown_item"}
-        self.assertFalse(stock_full(own_player, item))
 
 
 class TestDedupeMovesFunction(unittest.TestCase):
