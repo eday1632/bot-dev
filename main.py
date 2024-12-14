@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import json
 import random
+import json
+import datetime
 
 CURRENT_EXP_RATE = 0
+DEAD = False
 
 
 def dist_squared_to(a: dict, b: dict) -> float:
@@ -19,9 +21,9 @@ def calculate_potion_value(own_player):
         0: 2048,
         1: 512,
         2: 256,
-        3: 64,
-        4: 12,
-        5: 12,
+        3: 128,
+        4: 64,
+        5: 32,
         6: 12,
     }
     on_hand = len(own_player["items"]["big_potions"])
@@ -85,8 +87,6 @@ def exp_rate(own_player: dict, item: dict) -> float:
     # Adjust experience for player type
     if item["type"] == "player":
         exps["player"] += item["levelling"]["level"] * 10
-        if item["special_equipped"] == "freeze":
-            exps["player"] = exps["player"] / 1.33
 
     # Special cases for chest and power-up
     if item["type"] in ["chest", "power_up"] and own_player["special_equipped"] not in [
@@ -266,6 +266,12 @@ def assess_attack(own_player, target, moves):
         and dist_squared_to(own_player["position"], target["position"]) < 90000
         and dist_squared_to(own_player["position"], target["position"]) > 30000
         and target["is_frozen"]
+    ):
+        moves.append("dash")
+    elif (
+        target.get("attack_damage") is not None
+        and dist_squared_to(own_player["position"], target["position"]) < 90000
+        and target.get("health") < own_player["attack_damage"]
     ):
         moves.append("dash")
 
@@ -568,9 +574,23 @@ def play(level_data: LevelData):
     moves = []
     own_player = level_data.own_player
     threats = []
-    if own_player["health"] <= 0:
-        with open("/Users/dastardly/Desktop/bot-deaths.txt", "a") as f:
-            f.write(str(level_data))
+    global DEAD
+    timestamp = datetime.datetime.now()
+    if own_player["health"] <= 0 and not DEAD:
+        DEAD = True
+        with open("/tmp/enemies.txt", "a") as f:
+            f.write(json.dumps(level_data.enemies))
+        with open("/tmp/items.txt", "a") as f:
+            f.write(json.dumps(level_data.items))
+        with open("/tmp/own_player.txt", "a") as f:
+            f.write(json.dumps(level_data.own_player))
+        with open("/tmp/hazards.txt", "a") as f:
+            f.write(json.dumps(level_data.hazards))
+        with open("/tmp/game_info.txt", "a") as f:
+            f.write(json.dumps(level_data.game_info))
+
+    elif own_player["health"] > 0:
+        DEAD = False
 
     enemies = filter_threats(level_data.enemies)
     threats.extend(enemies)
@@ -637,3 +657,33 @@ app = FastAPI()
 async def receive_level_data(level_data: LevelData):
     moves = play(level_data)
     return moves
+
+
+@app.get("/enemies")
+async def get():
+    with open("/tmp/enemies.txt") as fp:
+        return fp.read()
+
+
+@app.get("/own-player")
+async def get():
+    with open("/tmp/own_player.txt") as fp:
+        return fp.read()
+
+
+@app.get("/items")
+async def get():
+    with open("/tmp/items.txt") as fp:
+        return fp.read()
+
+
+@app.get("/hazards")
+async def get():
+    with open("/tmp/hazards.txt") as fp:
+        return fp.read()
+
+
+@app.get("/game-info")
+async def get():
+    with open("/tmp/game_info.txt") as fp:
+        return fp.read()
