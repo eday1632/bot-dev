@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
+import csv
 import random
 import json
 import datetime
+import pandas as pd
 
 CURRENT_EXP_RATE = 0
 DEAD = False
@@ -575,19 +577,29 @@ def play(level_data: LevelData):
     own_player = level_data.own_player
     threats = []
     global DEAD
-    timestamp = datetime.datetime.now()
     if own_player["health"] <= 0 and not DEAD:
+        timestamp = datetime.datetime.now()
         DEAD = True
-        with open("/tmp/enemies.txt", "a") as f:
-            f.write(json.dumps(level_data.enemies))
-        with open("/tmp/items.txt", "a") as f:
-            f.write(json.dumps(level_data.items))
-        with open("/tmp/own_player.txt", "a") as f:
-            f.write(json.dumps(level_data.own_player))
-        with open("/tmp/hazards.txt", "a") as f:
-            f.write(json.dumps(level_data.hazards))
-        with open("/tmp/game_info.txt", "a") as f:
-            f.write(json.dumps(level_data.game_info))
+        with open("/tmp/enemies.log", "w") as f:
+            df = pd.json_normalize(level_data.enemies)
+            df["timestamp"] = timestamp
+            f.write(df.to_csv(index=False))
+        with open("/tmp/items.log", "a") as f:
+            df = pd.json_normalize(level_data.items)
+            df["timestamp"] = timestamp
+            f.write(df.to_csv(index=False))
+        with open("/tmp/own_player.log", "a") as f:
+            df = pd.json_normalize(level_data.own_player)
+            df["timestamp"] = timestamp
+            f.write(df.to_csv(index=False))
+        with open("/tmp/hazards.log", "a") as f:
+            df = pd.json_normalize(level_data.hazards)
+            df["timestamp"] = timestamp
+            f.write(df.to_csv(index=False))
+        with open("/tmp/game_info.log", "a") as f:
+            df = pd.json_normalize(level_data.game_info)
+            df["timestamp"] = timestamp
+            f.write(df.to_csv(index=False))
 
     elif own_player["health"] > 0:
         DEAD = False
@@ -623,7 +635,7 @@ def play(level_data: LevelData):
     bomb = bomb_nearby(own_player, hazards)
     total_danger_value = total_danger(own_player, players, enemies, hazards)
 
-    moves = assess_health_needs(own_player, total_danger_value, moves)
+    # moves = assess_health_needs(own_player, total_danger_value, moves)
     moves = assess_attack(own_player, target, moves)
     moves = assess_zapper_use(own_player, target, moves)
 
@@ -661,29 +673,29 @@ async def receive_level_data(level_data: LevelData):
 
 @app.get("/enemies")
 async def get():
-    with open("/tmp/enemies.txt") as fp:
-        return fp.read()
+    with open("/tmp/enemies.log") as fp:
+        return fp.readlines()
 
 
 @app.get("/own-player")
 async def get():
-    with open("/tmp/own_player.txt") as fp:
+    with open("/tmp/own_player.log") as fp:
         return fp.read()
 
 
 @app.get("/items")
 async def get():
-    with open("/tmp/items.txt") as fp:
+    with open("/tmp/items.log") as fp:
         return fp.read()
 
 
 @app.get("/hazards")
 async def get():
-    with open("/tmp/hazards.txt") as fp:
+    with open("/tmp/hazards.log") as fp:
         return fp.read()
 
 
 @app.get("/game-info")
 async def get():
-    with open("/tmp/game_info.txt") as fp:
+    with open("/tmp/game_info.log") as fp:
         return fp.read()
