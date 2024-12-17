@@ -6,7 +6,6 @@ import json
 import datetime
 import pandas as pd
 
-CURRENT_EXP_RATE = 0
 DEAD = False
 
 
@@ -78,7 +77,7 @@ def exp_rate(own_player: dict, item: dict) -> float:
         "ghoul": 100,
         "wolf": 80,
         "player": 60,
-        "coin": 200,
+        "coin": 300,
         "big_potion": potion_value,
         "speed_zapper": zapper_value,
         "ring": ring_value,
@@ -243,18 +242,6 @@ def get_best_item(
             target = item
 
     return target
-
-
-def print_exp_rate(game_info: dict, own_player: dict) -> None:
-    # Log exp rate periodically
-    global CURRENT_EXP_RATE
-    if game_info["time_remaining_s"] % 5 == 0:
-        exp_rate = round(
-            own_player["score"] / (1801 - game_info["time_remaining_s"]), 2
-        )
-        if CURRENT_EXP_RATE != exp_rate:
-            CURRENT_EXP_RATE = exp_rate
-            print(f"Score rate: {CURRENT_EXP_RATE}")
 
 
 def assess_attack(own_player, target, moves):
@@ -621,8 +608,6 @@ def play(level_data: LevelData):
     potential_targets.extend(enemies)
     potential_targets.extend(players)
 
-    print_exp_rate(game_info, own_player)
-
     moves = apply_skill_points(own_player, moves)
 
     target = get_best_item(own_player, potential_targets, hazards, enemies, players)
@@ -635,7 +620,7 @@ def play(level_data: LevelData):
     bomb = bomb_nearby(own_player, hazards)
     total_danger_value = total_danger(own_player, players, enemies, hazards)
 
-    # moves = assess_health_needs(own_player, total_danger_value, moves)
+    moves = assess_health_needs(own_player, total_danger_value, moves)
     moves = assess_attack(own_player, target, moves)
     moves = assess_zapper_use(own_player, target, moves)
 
