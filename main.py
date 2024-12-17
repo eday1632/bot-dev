@@ -60,7 +60,6 @@ def calculate_zapper_value(own_player):
 
 
 def exp_rate(own_player: dict, item: dict) -> float:
-    # TODO: Calculate richest area
     # TODO: Calculate kamakazi value
 
     # Calculate the player's speed
@@ -85,7 +84,7 @@ def exp_rate(own_player: dict, item: dict) -> float:
         "power_up": 0,
     }
 
-    # Adjust experience for player type
+    # Adjust experience for player level
     if item["type"] == "player":
         exps["player"] += item["levelling"]["level"] * 10
 
@@ -211,13 +210,14 @@ def get_best_item(
     own_player: dict, items: list, hazards: list, enemies: list, players: list
 ) -> dict:
     max_exp = float("-inf")
-    target = None
+    target = {}
 
     for item in items:
         if (
             item["type"] == "tiny"
             and dist_squared_to(own_player["position"], item["position"]) < 17500
         ):
+            item["exp"] = int(exp_rate(own_player, item))
             return item
 
         # Skip items based on various conditions
@@ -237,9 +237,16 @@ def get_best_item(
 
         # Calculate experience rate and update the target if this is the best option
         exp = exp_rate(own_player, item)
+        for other_item in items:
+            if (
+                dist_squared_to(item["position"], other_item["position"]) < 60000
+                and dist_squared_to(item["position"], other_item["position"]) > 0
+            ):
+                exp += exp_rate(own_player, other_item)
         if exp > max_exp:
             max_exp = exp
             target = item
+            target["exp"] = int(exp)
 
     return target
 
@@ -281,8 +288,9 @@ def assess_attack(own_player, target, moves):
 
 def assess_health_needs(own_player, total_danger_value, moves):
     # Handle health and potion usage
-    if total_danger_value > own_player["health"] * 1.25:
+    if total_danger_value > own_player["health"] * 1.35:
         moves.append({"use": "big_potion"})
+        moves.append("dash")
         if not own_player["is_cloaked"]:
             moves.append({"use": "ring"})
         if own_player["health"] + 100 >= own_player["max_health"]:
@@ -290,6 +298,7 @@ def assess_health_needs(own_player, total_danger_value, moves):
 
     if own_player["health"] / own_player["max_health"] < 0.4:
         moves.append({"use": "big_potion"})
+        moves.append("dash")
         if not own_player["is_cloaked"]:
             moves.append({"use": "ring"})
     elif (
@@ -567,7 +576,7 @@ def play(level_data: LevelData):
     if own_player["health"] <= 0 and not DEAD:
         timestamp = datetime.datetime.now()
         DEAD = True
-        with open("/tmp/enemies.log", "w") as f:
+        with open("/tmp/enemies.log", "a") as f:
             df = pd.json_normalize(level_data.enemies)
             df["timestamp"] = timestamp
             f.write(df.to_csv(index=False))
@@ -600,7 +609,6 @@ def play(level_data: LevelData):
     players = filter_threats(level_data.players)
     threats.extend(players)
 
-    game_info = level_data.game_info
     items = level_data.items
 
     potential_targets = []
@@ -615,7 +623,8 @@ def play(level_data: LevelData):
         print("No target found")
         return moves
 
-    moves.append({"speak": target["type"]})
+    message = f'{target["type"]}: {target.get("exp")}'
+    moves.append({"speak": message})
 
     bomb = bomb_nearby(own_player, hazards)
     total_danger_value = total_danger(own_player, players, enemies, hazards)
