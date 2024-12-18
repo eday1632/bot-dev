@@ -29,9 +29,7 @@ def calculate_potion_value(own_player):
         6: 12,
     }
     on_hand = len(own_player["items"]["big_potions"])
-    return potion_values[on_hand] / (
-        (own_player["health"] + 1) / own_player["max_health"]
-    )
+    return potion_values[on_hand]
 
 
 def calculate_ring_value(own_player):
@@ -147,7 +145,6 @@ def get_best_item(
 
     for item in items:
         if item["type"] == "tiny" and item["distance"] < 17500:
-            item["exp"] = int(exp_rate(own_player, item))
             return item
 
         # Skip items based on various conditions
@@ -189,7 +186,7 @@ def get_best_item(
                     total_effort += (
                         other_item["health"] / own_player["attack_damage"]
                     ) * 0.5  # Assuming attack cooldown
-                total_effort += (other_item["distance"] ** exponent) / my_speed
+                total_effort += (distance ** exponent) / my_speed
 
         potential_xp = total_xp / total_effort
         if potential_xp > max_xp:
@@ -617,7 +614,7 @@ def play(level_data: LevelData):
         print("No target found")
         return moves
 
-    message = f'{target["type"]}: {target.get("exp")}'
+    message = f'{target["type"]}: {target.get("xp")}'
     moves.append({"speak": message})
 
     bomb = bomb_nearby(own_player, hazards)
