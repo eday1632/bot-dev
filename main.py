@@ -1,12 +1,13 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import csv
 import random
-import json
 import datetime
 import pandas as pd
 
 DEAD = False
+POTIONS = 0
+RINGS = 0
+ZAPPERS = 0
 
 
 def dist_squared_to(a: dict, b: dict) -> float:
@@ -19,12 +20,12 @@ def slope(a: dict, b: dict) -> float:
 
 def calculate_potion_value(own_player):
     potion_values = {
-        0: 2048,
-        1: 512,
-        2: 256,
-        3: 128,
-        4: 64,
-        5: 32,
+        0: 1024,
+        1: 350,
+        2: 150,
+        3: 100,
+        4: 50,
+        5: 25,
         6: 12,
     }
     on_hand = len(own_player["items"]["big_potions"])
@@ -35,9 +36,9 @@ def calculate_potion_value(own_player):
 
 def calculate_ring_value(own_player):
     ring_values = {
-        0: 128,
-        1: 64,
-        2: 32,
+        0: 85,
+        1: 50,
+        2: 35,
         3: 16,
         4: 12,
         5: 12,
@@ -48,77 +49,15 @@ def calculate_ring_value(own_player):
 
 def calculate_zapper_value(own_player):
     zapper_values = {
-        0: 128,
-        1: 64,
-        2: 32,
+        0: 85,
+        1: 50,
+        2: 35,
         3: 12,
         4: 12,
         5: 12,
     }
     on_hand = len(own_player["items"]["speed_zappers"])
     return zapper_values[on_hand]
-
-
-def exp_rate(own_player: dict, item: dict) -> float:
-    # TODO: Calculate kamakazi value
-
-    # Calculate the player's speed
-    my_speed = 15000 + own_player["levelling"]["speed"] * 500
-
-    potion_value = calculate_potion_value(own_player)
-    ring_value = calculate_ring_value(own_player)
-    zapper_value = calculate_zapper_value(own_player)
-
-    # Experience values for different item types
-    exps = {
-        "minotaur": 600,
-        "tiny": 300,
-        "ghoul": 100,
-        "wolf": 80,
-        "player": 60,
-        "coin": 300,
-        "big_potion": potion_value,
-        "speed_zapper": zapper_value,
-        "ring": ring_value,
-        "chest": 0,
-        "power_up": 0,
-    }
-
-    # Adjust experience for player level
-    if item["type"] == "player":
-        exps["player"] += item["levelling"]["level"] * 10
-
-    # Special cases for chest and power-up
-    if item["type"] in ["chest", "power_up"] and own_player["special_equipped"] not in [
-        "bomb",
-        "freeze",
-    ]:
-        exps["chest"] = 3000
-        exps["power_up"] = 3000
-
-    # Special case for tinys
-    if (
-        item["type"] == "tiny"
-        and len(own_player["items"]["speed_zappers"]) == 0
-        and not item["is_zapped"]
-        and not item["is_frozen"]
-    ):
-        exps["tiny"] = 50
-
-    # Calculate distance, travel time, and kill time
-    distance = dist_squared_to(item["position"], own_player["position"])
-    travel_time = distance / my_speed
-    kill_time = 0
-
-    if item.get("health") is not None:  # Check if the item has a health attribute
-        if item["type"] == "player":
-            item["health"] += 150  # Assume players have an average of 1.5 potions
-        kill_time = (
-            item["health"] / own_player["attack_damage"]
-        ) * 0.5  # Assuming attack cooldown
-
-    # Return experience rate
-    return exps[item["type"]] / (travel_time + kill_time)
 
 
 def peripheral_danger(
@@ -128,15 +67,15 @@ def peripheral_danger(
     total_danger = 0
 
     for enemy in enemies:
-        if dist_squared_to(item["position"], enemy["position"]) < 100000:
+        if dist_squared_to(item["position"], enemy["position"]) < 100000:  # 316
             total_danger += enemy["attack_damage"]
 
     for player in players:
-        if dist_squared_to(item["position"], player["position"]) < 100000:
+        if dist_squared_to(item["position"], player["position"]) < 100000:  # 316
             total_danger += player["attack_damage"]
 
     for hazard in hazards:
-        if dist_squared_to(item["position"], hazard["position"]) < 60000:
+        if dist_squared_to(item["position"], hazard["position"]) < 60000:  # 245
             total_danger += hazard["attack_damage"]
 
     return total_danger > total_health
@@ -182,25 +121,19 @@ def bomb_nearby(item: dict, hazards: list) -> dict:
     return {}
 
 
-def total_danger(own_player: dict, players: list, enemies: list, hazards: list) -> int:
+def total_danger(players: list, enemies: list, hazards: list) -> int:
     total_danger = 0
 
     for player in players:
-        if (
-            dist_squared_to(own_player["position"], player["position"]) < 100000
-            and not player["is_frozen"]
-        ):
+        if player["distance"] < 100000 and not player["is_frozen"]:
             total_danger += player["attack_damage"]
 
     for enemy in enemies:
-        if (
-            dist_squared_to(own_player["position"], enemy["position"]) < 100000
-            and not enemy["is_frozen"]
-        ):
+        if enemy["distance"] < 100000 and not enemy["is_frozen"]:
             total_danger += enemy["attack_damage"]
 
     for hazard in hazards:
-        if dist_squared_to(own_player["position"], hazard["position"]) < 60000:
+        if hazard["distance"] < 60000:
             total_danger += hazard["attack_damage"]
 
     return total_danger
@@ -209,14 +142,11 @@ def total_danger(own_player: dict, players: list, enemies: list, hazards: list) 
 def get_best_item(
     own_player: dict, items: list, hazards: list, enemies: list, players: list
 ) -> dict:
-    max_exp = float("-inf")
+    max_xp = float("-inf")
     target = {}
 
     for item in items:
-        if (
-            item["type"] == "tiny"
-            and dist_squared_to(own_player["position"], item["position"]) < 17500
-        ):
+        if item["type"] == "tiny" and item["distance"] < 17500:
             item["exp"] = int(exp_rate(own_player, item))
             return item
 
@@ -231,42 +161,58 @@ def get_best_item(
             for hazard in hazards:
                 if (
                     hazard["attack_damage"] > item["health"]
-                    and dist_squared_to(hazard["position"], item["position"]) < 45000
+                    and dist_squared_to(hazard["position"], item["position"]) < 50000
                 ):
                     continue
 
         # Calculate experience rate and update the target if this is the best option
-        exp = exp_rate(own_player, item)
+        exponent = 0.6
+        my_speed = 15000**exponent + own_player["levelling"]["speed"] * 500**exponent
+        total_xp = item["xp"]
+        total_effort = 0
+        if item["type"] == "player":
+            item["health"] += 200  # Assume players have an average of 2 potions
+        if item.get("health") is not None:
+            total_effort += (
+                item["health"] / own_player["attack_damage"]
+            ) * 0.5  # Assuming attack cooldown
+        total_effort += (item["distance"] ** exponent) / my_speed
+
         for other_item in items:
-            if (
-                dist_squared_to(item["position"], other_item["position"]) < 60000
-                and dist_squared_to(item["position"], other_item["position"]) > 0
-            ):
-                exp += exp_rate(own_player, other_item)
-        if exp > max_exp:
-            max_exp = exp
+            distance = dist_squared_to(item["position"], other_item["position"])
+            if 0 < distance < 60000:
+                total_xp += other_item["xp"]
+                # Calculate total effort: kill time + travel time
+                if other_item["type"] == "player":
+                    other_item["health"] += 200  # Assume players have an average of 2 potions
+                if other_item.get("health") is not None:  # Check if the other_item has a health attribute
+                    total_effort += (
+                        other_item["health"] / own_player["attack_damage"]
+                    ) * 0.5  # Assuming attack cooldown
+                total_effort += (other_item["distance"] ** exponent) / my_speed
+
+        potential_xp = total_xp / total_effort
+        if potential_xp > max_xp:
+            max_xp = potential_xp
             target = item
-            target["exp"] = int(exp)
+            target["xp"] = int(potential_xp)
 
     return target
 
 
 def assess_attack(own_player, target, moves):
-    if (
-        target.get("health") is not None
-        and dist_squared_to(own_player["position"], target["position"]) < 16625
-    ):
+    if target.get("health") is not None and target["distance"] < 16625:
         moves.append("attack")
     if (
         target.get("attack_damage") is not None
-        and dist_squared_to(own_player["position"], target["position"]) < 90000
-        and dist_squared_to(own_player["position"], target["position"]) > 30000
+        and target["distance"] < 90000
+        and target["distance"] > 30000
         and target["is_frozen"]
     ):
         moves.append("dash")
     elif (
         target.get("attack_damage") is not None
-        and dist_squared_to(own_player["position"], target["position"]) < 90000
+        and target["distance"] < 90000
         and target.get("health") < own_player["attack_damage"]
     ):
         moves.append("dash")
@@ -288,7 +234,7 @@ def assess_attack(own_player, target, moves):
 
 def assess_health_needs(own_player, total_danger_value, moves):
     # Handle health and potion usage
-    if total_danger_value > own_player["health"] * 1.35:
+    if total_danger_value > own_player["health"] * 1.4:
         moves.append({"use": "big_potion"})
         moves.append("dash")
         if not own_player["is_cloaked"]:
@@ -299,13 +245,6 @@ def assess_health_needs(own_player, total_danger_value, moves):
     if own_player["health"] / own_player["max_health"] < 0.4:
         moves.append({"use": "big_potion"})
         moves.append("dash")
-        if not own_player["is_cloaked"]:
-            moves.append({"use": "ring"})
-    elif (
-        own_player["health"] / own_player["max_health"] < 0.5
-        and len(own_player["items"]["big_potions"]) > 1
-    ):
-        moves.append({"use": "big_potion"})
         if not own_player["is_cloaked"]:
             moves.append({"use": "ring"})
     elif (
@@ -321,10 +260,10 @@ def assess_health_needs(own_player, total_danger_value, moves):
     return moves
 
 
-def assess_zapper_use(own_player, target, moves):
+def assess_zapper_use(target, moves):
     if (
         target["type"] in ["player", "tiny"]
-        and dist_squared_to(own_player["position"], target["position"]) < 225000
+        and target["distance"] < 225000
         and not target["is_zapped"]
     ):
         moves.append({"use": "speed_zapper"})
@@ -353,7 +292,7 @@ def handle_icicle_threat(own_player, hazards, moves):
     for hazard in hazards:
         if (
             hazard["type"] == "icicle"
-            and dist_squared_to(hazard["position"], own_player["position"]) < 20000
+            and hazard["distance"] < 20000
             and own_player["id"] != hazard["owner_id"]
         ):
             moves.append("shield")
@@ -363,7 +302,7 @@ def handle_icicle_threat(own_player, hazards, moves):
 def avoid_collisions(own_player, target, threats):
     nearby_threats = []
     for threat in threats:
-        if dist_squared_to(own_player["position"], threat["position"]) < 70000:
+        if threat["distance"] < 70000:
             nearby_threats.append(threat)
 
     for threat in nearby_threats:
@@ -465,22 +404,18 @@ def assess_bomb_use(own_player, target, enemies, moves):
             and own_player["position"]["x"] > enemy["position"]["x"]
             and target["position"]["y"] > own_player["position"]["y"]
             and own_player["position"]["y"] > enemy["position"]["y"]
-            and 50000
-            < dist_squared_to(enemy["position"], own_player["position"])
-            < bomb_distance
+            and 50000 < enemy["distance"] < bomb_distance
             and target["id"] != enemy["id"]
         ):
             moves.append("special")
             break
 
-        elif (
+        if (
             target["position"]["x"] < own_player["position"]["x"]
             and own_player["position"]["x"] < enemy["position"]["x"]
             and target["position"]["y"] < own_player["position"]["y"]
             and own_player["position"]["y"] < enemy["position"]["y"]
-            and 50000
-            < dist_squared_to(enemy["position"], own_player["position"])
-            < bomb_distance
+            and 50000 < enemy["distance"] < bomb_distance
             and target["id"] != enemy["id"]
         ):
             moves.append("special")
@@ -491,29 +426,25 @@ def assess_bomb_use(own_player, target, enemies, moves):
             and own_player["position"]["x"] < enemy["position"]["x"]
             and target["position"]["y"] > own_player["position"]["y"]
             and own_player["position"]["y"] > enemy["position"]["y"]
-            and 50000
-            < dist_squared_to(enemy["position"], own_player["position"])
-            < bomb_distance
+            and 50000 < enemy["distance"] < bomb_distance
             and target["id"] != enemy["id"]
         ):
             moves.append("special")
             break
 
         if (
-            target["position"]["x"] < own_player["position"]["x"]
-            and own_player["position"]["x"] < enemy["position"]["x"]
-            and target["position"]["y"] > own_player["position"]["y"]
-            and own_player["position"]["y"] > enemy["position"]["y"]
-            and 50000
-            < dist_squared_to(enemy["position"], own_player["position"])
-            < bomb_distance
+            target["position"]["x"] > own_player["position"]["x"]
+            and own_player["position"]["x"] > enemy["position"]["x"]
+            and target["position"]["y"] < own_player["position"]["y"]
+            and own_player["position"]["y"] < enemy["position"]["y"]
+            and 50000 < enemy["distance"] < bomb_distance
             and target["id"] != enemy["id"]
         ):
             moves.append("special")
             break
 
         if (
-            dist_squared_to(enemy["position"], own_player["position"]) < 50000
+            enemy["distance"] < 50000
             and own_player["is_shield_ready"]
             and own_player["health"] > own_player["attack_damage"] * 2.5
             and target["id"] == enemy["id"]
@@ -529,7 +460,7 @@ def assess_icicle_use(own_player, target, moves):
     if (
         target["type"] in ["wolf", "ghoul", "tiny", "minotaur", "player"]
         and not target["is_frozen"]
-        and dist_squared_to(target["position"], own_player["position"]) < 225000
+        and target["distance"] < 225000
         and not own_player["shield_raised"]
     ):
         moves.append("special")
@@ -557,6 +488,62 @@ def filter_threats(threats):
         elif threat.get("status") and threat["status"] != "idle":
             existing_threats.append(threat)
     return existing_threats
+
+
+def generate_distance(own_player, items):
+    for item in items:
+        item["distance"] = dist_squared_to(own_player["position"], item["position"])
+    return items
+
+
+def apply_metadata(own_player, items):
+    potion_value = calculate_potion_value(own_player)
+    ring_value = calculate_ring_value(own_player)
+    zapper_value = calculate_zapper_value(own_player)
+
+    # Experience values for different item types
+    exps = {
+        "minotaur": 600,
+        "tiny": 300,
+        "ghoul": 100,
+        "wolf": 80,
+        "player": 80,
+        "coin": 200,
+        "big_potion": potion_value,
+        "speed_zapper": zapper_value,
+        "ring": ring_value,
+        "chest": 0,
+        "power_up": 0,
+    }
+    for item in items:
+
+        # Adjust experience for player level
+        if item["type"] == "player":
+            exps["player"] += item["levelling"]["level"] * 25
+
+        # Special cases for chest and power-up
+        if item["type"] in ["chest", "power_up"] and own_player["special_equipped"] not in [
+            "bomb",
+            "freeze",
+        ]:
+            exps["chest"] = 1500
+            exps["power_up"] = 1500
+
+        # Special case for tinys
+        if (
+            item["type"] == "tiny"
+            and len(own_player["items"]["speed_zappers"]) == 0
+            and not item["is_zapped"]
+            and not item["is_frozen"]
+        ):
+            exps["tiny"] = 50
+
+        item["xp"] = exps[item["type"]]
+
+
+
+def cb_steering(level_data):
+    pass
 
 
 class LevelData(BaseModel):
@@ -601,15 +588,22 @@ def play(level_data: LevelData):
         DEAD = False
 
     enemies = filter_threats(level_data.enemies)
+    enemies = generate_distance(own_player, enemies)
+    apply_metadata(own_player, enemies)
     threats.extend(enemies)
 
     hazards = filter_threats(level_data.hazards)
+    hazards = generate_distance(own_player, hazards)
     threats.extend(hazards)
 
     players = filter_threats(level_data.players)
+    players = generate_distance(own_player, players)
+    apply_metadata(own_player, players)
     threats.extend(players)
 
     items = level_data.items
+    items = generate_distance(own_player, items)
+    apply_metadata(own_player, items)
 
     potential_targets = []
     potential_targets.extend(items)
@@ -627,11 +621,11 @@ def play(level_data: LevelData):
     moves.append({"speak": message})
 
     bomb = bomb_nearby(own_player, hazards)
-    total_danger_value = total_danger(own_player, players, enemies, hazards)
+    total_danger_value = total_danger(players, enemies, hazards)
 
     moves = assess_health_needs(own_player, total_danger_value, moves)
     moves = assess_attack(own_player, target, moves)
-    moves = assess_zapper_use(own_player, target, moves)
+    moves = assess_zapper_use(target, moves)
 
     # Handle special equipped logic
     if own_player["special_equipped"] == "bomb":
@@ -663,6 +657,11 @@ app = FastAPI()
 async def receive_level_data(level_data: LevelData):
     moves = play(level_data)
     return moves
+
+
+@app.post("/steering")
+async def steering(level_data: LevelData):
+    moves = cb_steering(level_data)
 
 
 @app.get("/enemies")
