@@ -177,16 +177,20 @@ def get_best_item(
 
         for other_item in items:
             distance = dist_squared_to(item["position"], other_item["position"])
-            if 0 < distance < 60000:
+            if 0 < distance < 70000:
                 total_xp += other_item["xp"]
                 # Calculate total effort: kill time + travel time
                 if other_item["type"] == "player":
-                    other_item["health"] += 200  # Assume players have an average of 2 potions
-                if other_item.get("health") is not None:  # Check if the other_item has a health attribute
+                    other_item[
+                        "health"
+                    ] += 200  # Assume players have an average of 2 potions
+                if (
+                    other_item.get("health") is not None
+                ):  # Check if the other_item has a health attribute
                     total_effort += (
                         other_item["health"] / own_player["attack_damage"]
                     ) * 0.5  # Assuming attack cooldown
-                total_effort += (distance ** exponent) / my_speed
+                total_effort += (distance**exponent) / my_speed
 
         potential_xp = total_xp / total_effort
         if potential_xp > max_xp:
@@ -203,7 +207,7 @@ def assess_attack(own_player, target, moves):
     if (
         target.get("attack_damage") is not None
         and target["distance"] < 90000
-        and target["distance"] > 30000
+        and target["distance"] > 50000
         and target["is_frozen"]
     ):
         moves.append("dash")
@@ -488,9 +492,13 @@ def filter_threats(threats):
 
 
 def generate_distance(own_player, items):
+    items_of_interest = []
     for item in items:
-        item["distance"] = dist_squared_to(own_player["position"], item["position"])
-    return items
+        distance = dist_squared_to(own_player["position"], item["position"])
+        if distance < 2250000:  # 2000 px
+            item["distance"] = distance
+            items_of_interest.append(item)
+    return items_of_interest
 
 
 def apply_metadata(own_player, items):
@@ -519,7 +527,9 @@ def apply_metadata(own_player, items):
             exps["player"] += item["levelling"]["level"] * 25
 
         # Special cases for chest and power-up
-        if item["type"] in ["chest", "power_up"] and own_player["special_equipped"] not in [
+        if item["type"] in ["chest", "power_up"] and own_player[
+            "special_equipped"
+        ] not in [
             "bomb",
             "freeze",
         ]:
@@ -536,7 +546,6 @@ def apply_metadata(own_player, items):
             exps["tiny"] = 50
 
         item["xp"] = exps[item["type"]]
-
 
 
 def cb_steering(level_data):
