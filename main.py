@@ -3,11 +3,19 @@ from pydantic import BaseModel
 import random
 import datetime
 import pandas as pd
+import numpy as np
 
 DEAD = False
 POTIONS = 0
 RINGS = 0
 ZAPPERS = 0
+
+
+# death tax: odds of dying x the cost of losing that time: odds * (xp/s * 5)
+# subtract this death tax from the projected exp of entering an area
+# how to calculate odds of dying? --> my bot-death logs
+# is this essentially avoidance?
+# logarithmic dropoff to the directions adjacent to the highest value?
 
 
 def dist_squared_to(a: dict, b: dict) -> float:
@@ -495,7 +503,7 @@ def generate_distance(own_player, items):
     items_of_interest = []
     for item in items:
         distance = dist_squared_to(own_player["position"], item["position"])
-        if distance < 2250000:  # 2000 px
+        if distance < 2250000: 
             item["distance"] = distance
             items_of_interest.append(item)
     return items_of_interest
@@ -533,8 +541,10 @@ def apply_metadata(own_player, items):
             "bomb",
             "freeze",
         ]:
-            exps["chest"] = 1500
-            exps["power_up"] = 1500
+            # exps["chest"] = 1500
+            # exps["power_up"] = 1500
+            exps["chest"] = 0
+            exps["power_up"] = 0
 
         # Special case for tinys
         if (
@@ -549,7 +559,143 @@ def apply_metadata(own_player, items):
 
 
 def cb_steering(level_data):
-    pass
+
+    moves = []
+    own_player = level_data.own_player
+    threats = []
+    enemies = filter_threats(level_data.enemies)
+    enemies = generate_distance(own_player, enemies)
+    apply_metadata(own_player, enemies)
+    threats.extend(enemies)
+
+    hazards = filter_threats(level_data.hazards)
+    hazards = generate_distance(own_player, hazards)
+    threats.extend(hazards)
+
+    players = filter_threats(level_data.players)
+    players = generate_distance(own_player, players)
+    apply_metadata(own_player, players)
+    threats.extend(players)
+
+    items = level_data.items
+    items = generate_distance(own_player, items)
+    apply_metadata(own_player, items)
+
+    potential_targets = []
+    potential_targets.extend(items)
+    # potential_targets.extend(hazards)
+    # potential_targets.extend(enemies)
+    # potential_targets.extend(players)
+
+    max_xp = float("-inf")
+    target = {}
+
+    for item in potential_targets:
+        # Calculate experience rate and update the target if this is the best option
+        exponent = 0.6
+        my_speed = 15000**exponent + own_player["levelling"]["speed"] * 500**exponent
+        total_xp = item["xp"]
+        total_effort = 0
+        if item["type"] == "player":
+            item["health"] += 200  # Assume players have an average of 2 potions
+        if item.get("health") is not None:
+            total_effort += (
+                item["health"] / own_player["attack_damage"]
+            ) * 0.5  # Assuming attack cooldown
+        total_effort += (item["distance"] ** exponent) / my_speed
+
+        for other_item in items:
+            distance = dist_squared_to(item["position"], other_item["position"])
+            if 0 < distance < 70000:
+                total_xp += other_item["xp"]
+                # Calculate total effort: kill time + travel time
+                if other_item["type"] == "player":
+                    other_item[
+                        "health"
+                    ] += 200  # Assume players have an average of 2 potions
+                if (
+                    other_item.get("health") is not None
+                ):  # Check if the other_item has a health attribute
+                    total_effort += (
+                        other_item["health"] / own_player["attack_damage"]
+                    ) * 0.5  # Assuming attack cooldown
+                total_effort += (distance**exponent) / my_speed
+
+        potential_xp = total_xp / total_effort
+        if potential_xp > max_xp:
+            max_xp = potential_xp
+            target = item
+            target["xp"] = int(potential_xp)
+
+    position = [own_player["position"]["x"], own_player["position"]["y"]]
+    velocity = [0, 0]
+    max_speed = 20000
+    max_force = 2000
+    avoid_radius = 350
+    agent = Agent(position, velocity, max_speed, max_force)
+
+    moves = apply_skill_points(own_player, moves)
+
+    print(target)
+    target_pos = [target["position"]["x"], target["position"]["y"]]
+    steering_force = agent.seek(target_pos)
+    for enemy in threats:
+        enemy_pos = [enemy["position"]["x"], enemy["position"]["y"]]
+        steering_force += agent.avoid_obstacle(enemy_pos, avoid_radius)
+
+    # Apply and update
+    agent.apply_force(steering_force)
+    agent.update()
+    own_player["position"]["x"] = agent.position[0]
+    own_player["position"]["y"] = agent.position[1]
+    print(agent.position)
+    moves.append({"move_to": own_player["position"]})
+
+    return moves
+
+
+class Agent:
+    def __init__(self, position, velocity, max_speed, max_force):
+        self.position = np.array(position, dtype=float)
+        self.velocity = np.array(velocity, dtype=float)
+        self.acceleration = np.zeros(2)
+        self.max_speed = max_speed
+        self.max_force = max_force
+
+    def apply_force(self, force):
+        self.acceleration += force
+
+    def seek(self, target):
+        desired = np.array(target) - self.position
+        desired = self._set_magnitude(desired, self.max_speed)
+        steer = desired - self.velocity
+        steer = self._limit(steer, self.max_force)
+        return steer
+
+    def avoid_obstacle(self, obstacle, avoid_radius):
+        to_obstacle = np.array(obstacle) - self.position
+        distance = np.linalg.norm(to_obstacle)
+        if distance < avoid_radius:
+            # Calculate a repulsive force
+            repulsion = -to_obstacle / distance
+            repulsion = self._set_magnitude(repulsion, self.max_force)
+            return repulsion
+        return np.zeros(2)
+
+    def update(self):
+        self.velocity += self.acceleration
+        self.velocity = self._limit(self.velocity, self.max_speed)
+        self.position += self.velocity
+        self.acceleration = np.zeros(2)
+
+    def _set_magnitude(self, vector, magnitude):
+        return vector / np.linalg.norm(vector) * magnitude
+
+    def _limit(self, vector, max_value):
+        magnitude = np.linalg.norm(vector)
+        if magnitude > max_value:
+            vector = vector / magnitude * max_value
+        return vector
 
 
 class LevelData(BaseModel):
@@ -559,6 +705,7 @@ class LevelData(BaseModel):
     items: list
     game_info: dict
     own_player: dict
+    obstacles: list
 
 
 def play(level_data: LevelData):
@@ -668,6 +815,7 @@ async def receive_level_data(level_data: LevelData):
 @app.post("/steering")
 async def steering(level_data: LevelData):
     moves = cb_steering(level_data)
+    return moves
 
 
 @app.get("/enemies")
