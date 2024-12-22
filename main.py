@@ -28,22 +28,25 @@ def slope(a: dict, b: dict) -> float:
 
 def calculate_potion_value(own_player):
     potion_values = {
-        0: 600,
-        1: 350,
-        2: 150,
-        3: 100,
-        4: 75,
-        5: 50,
-        6: 12,
+        0: 1548,
+        1: 524,
+        2: 212,
+        3: 126,
+        4: 108,
+        5: 64,
+        6: 32,
     }
+    if own_player["special_equipped"] == "bomb":
+        for val in potion_values:
+            potion_values[val] *= 2
     on_hand = len(own_player["items"]["big_potions"])
     return potion_values[on_hand]
 
 
 def calculate_ring_value(own_player):
     ring_values = {
-        0: 185,
-        1: 150,
+        0: 125,
+        1: 100,
         2: 70,
         3: 16,
         4: 12,
@@ -55,9 +58,9 @@ def calculate_ring_value(own_player):
 
 def calculate_zapper_value(own_player):
     zapper_values = {
-        0: 85,
-        1: 50,
-        2: 35,
+        0: 90,
+        1: 12,
+        2: 12,
         3: 12,
         4: 12,
         5: 12,
@@ -121,7 +124,7 @@ def bomb_nearby(item: dict, hazards: list) -> dict:
     for hazard in hazards:
         if (
             hazard["type"] == "bomb"
-            and dist_squared_to(item["position"], hazard["position"]) < 50000
+            and dist_squared_to(item["position"], hazard["position"]) < 80000
         ):
             return hazard
     return {}
@@ -131,11 +134,11 @@ def total_danger(players: list, enemies: list, hazards: list) -> int:
     total_danger = 0
 
     for player in players:
-        if player["distance"] < 100000 and not player["is_frozen"]:
+        if player["distance"] < 60000 and not player["is_frozen"]:
             total_danger += player["attack_damage"]
 
     for enemy in enemies:
-        if enemy["distance"] < 100000 and not enemy["is_frozen"]:
+        if enemy["distance"] < 50000 and not enemy["is_frozen"]:
             total_danger += enemy["attack_damage"]
 
     for hazard in hazards:
@@ -185,7 +188,7 @@ def get_best_item(
 
         for other_item in items:
             distance = dist_squared_to(item["position"], other_item["position"])
-            if 0 < distance < 70000:
+            if 0 < distance < 50000:
                 total_xp += other_item["xp"]
                 # Calculate total effort: kill time + travel time
                 if other_item["type"] == "player":
@@ -237,21 +240,23 @@ def assess_attack(own_player, target, moves):
                 "chest",
             ]:
                 moves.append("attack")
+                moves.append("shield")
 
     return moves
 
 
 def assess_health_needs(own_player, total_danger_value, moves):
     # Handle health and potion usage
-    # if total_danger_value > own_player["health"] * 1.2:
-    #     moves.append({"use": "big_potion"})
-    #     moves.append("dash")
-    #     if not own_player["is_cloaked"]:
-    #         moves.append({"use": "ring"})
-    #     if own_player["health"] + 100 >= own_player["max_health"]:
-    #         return moves
+    if total_danger_value > own_player["health"]:
+        moves.append({"use": "big_potion"})
+        moves.append("dash")
+        if not own_player["is_cloaked"]:
+            moves.append({"use": "ring"})
+        if own_player["health"] + 100 >= own_player["max_health"]:
+            return moves
 
     if own_player["health"] / own_player["max_health"] < 0.4:
+        moves.append("shield")
         moves.append({"use": "big_potion"})
         moves.append("dash")
         if not own_player["is_cloaked"]:
@@ -262,7 +267,7 @@ def assess_health_needs(own_player, total_danger_value, moves):
     ):
         moves.append({"use": "big_potion"})
     elif (
-        own_player["health"] / own_player["max_health"] < 0.9
+        own_player["health"] / own_player["max_health"] < 0.8
         and len(own_player["items"]["big_potions"]) == 6
     ):
         moves.append({"use": "big_potion"})
@@ -301,7 +306,7 @@ def handle_icicle_threat(own_player, hazards, moves):
     for hazard in hazards:
         if (
             hazard["type"] == "icicle"
-            and hazard["distance"] < 20000
+            and hazard["distance"] < 40000
             and own_player["id"] != hazard["owner_id"]
         ):
             moves.append("shield")
@@ -406,7 +411,7 @@ def avoid_collisions(own_player, target, threats):
 
 
 def assess_bomb_use(own_player, target, enemies, moves):
-    bomb_distance = 160000
+    bomb_distance = 130000
     for enemy in enemies:
         if (
             target["position"]["x"] > own_player["position"]["x"]
@@ -454,10 +459,8 @@ def assess_bomb_use(own_player, target, enemies, moves):
 
         if (
             enemy["distance"] < 50000
-            and own_player["is_shield_ready"]
             and own_player["health"] > own_player["attack_damage"] * 2.5
             and target["id"] == enemy["id"]
-            and own_player["is_shield_ready"]
             and target["health"] > own_player["attack_damage"]
         ):
             moves.append("special")
@@ -470,7 +473,6 @@ def assess_icicle_use(own_player, target, moves):
         target["type"] in ["wolf", "ghoul", "tiny", "minotaur", "player"]
         and not target["is_frozen"]
         and target["distance"] < 225000
-        and not own_player["shield_raised"]
     ):
         moves.append("special")
 
@@ -489,12 +491,14 @@ def assess_icicle_use(own_player, target, moves):
     return moves
 
 
-def filter_threats(threats):
+def filter_threats(own_player, threats):
     existing_threats = []
     for threat in threats:
         if threat.get("health") and threat["health"] > 0:
             existing_threats.append(threat)
         elif threat.get("status") and threat["status"] != "idle":
+            if threat["type"] == "icicle" and threat["owner_id"] == own_player["id"]:
+                continue
             existing_threats.append(threat)
     return existing_threats
 
@@ -503,7 +507,7 @@ def generate_distance(own_player, items):
     items_of_interest = []
     for item in items:
         distance = dist_squared_to(own_player["position"], item["position"])
-        if distance < 3000000:
+        if distance < 6000000:
             item["distance"] = distance
             items_of_interest.append(item)
     return items_of_interest
@@ -517,11 +521,11 @@ def apply_metadata(own_player, items):
     # Experience values for different item types
     exps = {
         "minotaur": 600,
-        "tiny": 300,
+        "tiny": 400,
         "ghoul": 100,
         "wolf": 80,
-        "player": 80,
-        "coin": 200,
+        "player": 0,
+        "coin": 250,
         "big_potion": potion_value,
         "speed_zapper": zapper_value,
         "ring": ring_value,
@@ -531,15 +535,39 @@ def apply_metadata(own_player, items):
     for item in items:
 
         # Adjust experience for player level
+        level_vals = {
+            1: 82,
+            2: 95,
+            3: 109,
+            4: 126,
+            5: 144,
+            6: 166,
+            7: 191,
+            8: 220,
+            9: 253,
+            10: 291,
+            11: 335,
+            12: 386,
+            13: 444,
+            14: 511,
+            15: 587,
+            16: 676,
+            17: 777,
+            18: 894,
+            19: 1029,
+            20: 1184,
+        }
         if item["type"] == "player":
-            exps["player"] += item["levelling"]["level"] * 25
+            exps["player"] = level_vals[item["levelling"]["level"]]
+            if item["special_equipped"] == "freeze":
+                exps["player"] = exps["player"] * 0.75
 
         # Special cases for chest and power-up
         if item["type"] in ["chest", "power_up"] and own_player[
             "special_equipped"
         ] not in [
             "bomb",
-            "freeze",
+            # "freeze",
         ]:
             exps["chest"] = 1500
             exps["power_up"] = 1500
@@ -624,36 +652,40 @@ def cb_steering(level_data):
             target = item
             target["xp"] = int(potential_xp)
 
-    if own_player["levelling"]["available_skill_points"] > 0:
-        moves.append({"redeem_skill_point": "speed"})
-
     position = [own_player["position"]["x"], own_player["position"]["y"]]
     velocity = [0, 0]
-    max_speed = 20000
-    max_force = 10000
-    avoid_radius = 200
+    max_speed = 100000
+    max_force = 200000
+    radii = {
+        "minotaur": 300,
+        "tiny": 100,
+        "ghoul": 200,
+        "wolf": 100,
+        "player": 250,
+        "bomb": 400,
+        "obstacle": 10,
+        "icicle": 200,
+    }
+
     agent = Agent(position, velocity, max_speed, max_force)
 
     target_pos = [target["position"]["x"], target["position"]["y"]]
     steering_force = agent.seek(target_pos)
     for enemy in threats:
-        if enemy["distance"] < 60000:
+        if enemy["distance"] < 30000 and enemy["id"] != target["id"]:
             enemy_pos = [enemy["position"]["x"], enemy["position"]["y"]]
-            steering_force += agent.avoid_obstacle(enemy_pos, avoid_radius)
+            steering_force += agent.avoid_obstacle(enemy_pos, radii[enemy["type"]])
     for obstacle in obstacles:
-        if obstacle["distance"] < 30000:
+        if obstacle["distance"] < 10000:
             obstacle_pos = [obstacle["position"]["x"], obstacle["position"]["y"]]
-            steering_force += agent.avoid_obstacle(obstacle_pos, 50)
+            steering_force += agent.avoid_obstacle(obstacle_pos, radii["obstacle"])
 
-    # Apply and update
+        # Apply and update
     agent.apply_force(steering_force)
     agent.update()
     own_player["position"]["x"] = agent.position[0]
     own_player["position"]["y"] = agent.position[1]
     moves.append({"move_to": own_player["position"]})
-    message = f'{target["type"]}: {target.get("xp")}'
-    moves.append({"speak": message})
-
     return moves
 
 
@@ -743,16 +775,16 @@ def play(level_data: LevelData):
     elif own_player["health"] > 0:
         DEAD = False
 
-    enemies = filter_threats(level_data.enemies)
+    enemies = filter_threats(own_player, level_data.enemies)
     enemies = generate_distance(own_player, enemies)
     apply_metadata(own_player, enemies)
     threats.extend(enemies)
 
-    hazards = filter_threats(level_data.hazards)
+    hazards = filter_threats(own_player, level_data.hazards)
     hazards = generate_distance(own_player, hazards)
     threats.extend(hazards)
 
-    players = filter_threats(level_data.players)
+    players = filter_threats(own_player, level_data.players)
     players = generate_distance(own_player, players)
     apply_metadata(own_player, players)
     threats.extend(players)
@@ -778,7 +810,7 @@ def play(level_data: LevelData):
         print("No target found")
         return moves
 
-    message = f'{target["type"]}: {target.get("xp")}'
+    message = f'{target["type"]}: {target["xp"]}'
     moves.append({"speak": message})
 
     bomb = bomb_nearby(own_player, hazards)
@@ -797,7 +829,7 @@ def play(level_data: LevelData):
     elif own_player["special_equipped"] == "freeze":
         moves = assess_icicle_use(own_player, target, moves)
     elif own_player["special_equipped"] == "shockwave":
-        if bomb:
+        if len(own_player["items"]["big_potions"]) == 0 or bomb:
             moves.append("special")
         elif peripheral_danger(own_player, own_player, enemies, players, hazards):
             moves.append("shield")
@@ -811,34 +843,56 @@ def play(level_data: LevelData):
     if len(own_player["items"]["big_potions"]) == 0 or bomb:
         position = [own_player["position"]["x"], own_player["position"]["y"]]
         velocity = [0, 0]
-        max_speed = 10000
-        max_force = 5000
-        avoid_radius = 100
+        max_speed = 1000
+        max_force = 2000
+        radii = {
+            "minotaur": 300,
+            "tiny": 100,
+            "ghoul": 200,
+            "wolf": 100,
+            "player": 250,
+            "bomb": 400,
+            "obstacle": 100,
+            "icicle": 200,
+        }
+
         agent = Agent(position, velocity, max_speed, max_force)
 
         target_pos = [target["position"]["x"], target["position"]["y"]]
         steering_force = agent.seek(target_pos)
-        for enemy in threats:
-            if enemy["distance"] < 40000:
-                enemy_pos = [enemy["position"]["x"], enemy["position"]["y"]]
-                steering_force += agent.avoid_obstacle(enemy_pos, avoid_radius)
-        for obstacle in obstacles:
-            if obstacle["distance"] < 30000:
-                obstacle_pos = [obstacle["position"]["x"], obstacle["position"]["y"]]
-                steering_force += agent.avoid_obstacle(obstacle_pos, 50)
+        min_distance = float("inf")
+        min_threat = {}
+        for threat in threats:
+            if threat["distance"] < min_distance:
+                min_threat = threat
 
-        # Apply and update
+        if min_threat["id"] != target["id"] and min_threat["distance"] < 30000:
+            threat_pos = [threat["position"]["x"], threat["position"]["y"]]
+            steering_force += agent.avoid_obstacle(threat_pos, radii[threat["type"]])
+
+        min_distance = float("inf")
+        min_obs = {}
+        for obstacle in obstacles:
+            if obstacle["distance"] < min_distance:
+                min_obs = obstacle
+
+        if min_obs["distance"] < 30000:
+            obs_pos = [min_obs["position"]["x"], min_obs["position"]["y"]]
+            steering_force += agent.avoid_obstacle(obs_pos, radii["obstacle"])
+
+            # Apply and update
         agent.apply_force(steering_force)
         agent.update()
         own_player["position"]["x"] = agent.position[0]
         own_player["position"]["y"] = agent.position[1]
         moves.append({"move_to": own_player["position"]})
-        message = f'{target["type"]}: {target.get("xp")}'
-        moves.append({"speak": message})
-
     else:
         moves.append({"move_to": target["position"]})
 
+    # added_health = 0
+    # for move in moves:
+    #     if move == {"use": "big_potion"}:
+    #         added_health += 100
     return moves
 
 
