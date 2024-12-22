@@ -76,15 +76,15 @@ def peripheral_danger(
     total_danger = 0
 
     for enemy in enemies:
-        if dist_squared_to(item["position"], enemy["position"]) < 100000:  # 316
+        if dist_squared_to(item["position"], enemy["position"]) < 80000:
             total_danger += enemy["attack_damage"]
 
     for player in players:
-        if dist_squared_to(item["position"], player["position"]) < 100000:  # 316
+        if dist_squared_to(item["position"], player["position"]) < 80000:
             total_danger += player["attack_damage"]
 
     for hazard in hazards:
-        if dist_squared_to(item["position"], hazard["position"]) < 60000:  # 245
+        if dist_squared_to(item["position"], hazard["position"]) < 60000:
             total_danger += hazard["attack_damage"]
 
     return total_danger > total_health
@@ -114,7 +114,7 @@ def apply_skill_points(own_player: dict, moves: list) -> list:
 def losing_battle(own_player: dict, item: dict) -> bool:
     if (
         item.get("attack_damage") is not None
-        and item["attack_damage"] * 1.2 >= own_player["health"]
+        and item["attack_damage"] * 1.2 > own_player["health"]
     ):
         return True
     return False
@@ -134,11 +134,11 @@ def total_danger(players: list, enemies: list, hazards: list) -> int:
     total_danger = 0
 
     for player in players:
-        if player["distance"] < 60000 and not player["is_frozen"]:
+        if player["distance"] < 30000 and not player["is_frozen"]:
             total_danger += player["attack_damage"]
 
     for enemy in enemies:
-        if enemy["distance"] < 50000 and not enemy["is_frozen"]:
+        if enemy["distance"] < 30000 and not enemy["is_frozen"]:
             total_danger += enemy["attack_damage"]
 
     for hazard in hazards:
@@ -158,11 +158,11 @@ def get_best_item(
         if item["type"] == "tiny" and item["distance"] < 17500:
             return item
 
-        # Skip items based on various conditions
-        if losing_battle(own_player, item):
-            continue
-        if peripheral_danger(own_player, item, enemies, players, hazards):
-            continue
+        # # Skip items based on various conditions
+        # if losing_battle(own_player, item):
+        #     continue
+        # if peripheral_danger(own_player, item, enemies, players, hazards):
+        #     continue
 
         # Additional checks for items with "attack_damage"
         if item.get("attack_damage") is not None:
@@ -228,6 +228,7 @@ def assess_attack(own_player, target, moves):
         and target.get("health") < own_player["attack_damage"]
     ):
         moves.append("dash")
+        moves.append("shield")
 
     if len(own_player["collisions"]) > 0:
         for collision in own_player["collisions"]:
@@ -237,7 +238,6 @@ def assess_attack(own_player, target, moves):
                 "tiny",
                 "minotaur",
                 "player",
-                "chest",
             ]:
                 moves.append("attack")
                 moves.append("shield")
@@ -247,9 +247,8 @@ def assess_attack(own_player, target, moves):
 
 def assess_health_needs(own_player, total_danger_value, moves):
     # Handle health and potion usage
-    if total_danger_value > own_player["health"]:
+    if total_danger_value > own_player["health"] * 1.2:
         moves.append({"use": "big_potion"})
-        moves.append("dash")
         if not own_player["is_cloaked"]:
             moves.append({"use": "ring"})
         if own_player["health"] + 100 >= own_player["max_health"]:
@@ -277,7 +276,7 @@ def assess_health_needs(own_player, total_danger_value, moves):
 def assess_zapper_use(target, moves):
     if (
         target["type"] in ["player", "tiny"]
-        and target["distance"] < 225000
+        and target["distance"] < 200000
         and not target["is_zapped"]
     ):
         moves.append({"use": "speed_zapper"})
@@ -313,6 +312,54 @@ def handle_icicle_threat(own_player, hazards, moves):
     return moves
 
 
+def retreat(own_player, target, threats):
+    retreat = 200
+    for threat in threats:
+        threat_slope = slope(own_player["position"], threat["position"])
+        threat_inverse = 1 / threat_slope
+        if (
+            threat["position"]["x"] > own_player["position"]["x"]
+            and threat["position"]["y"] > own_player["position"]["y"]
+        ):
+            target["position"]["x"] = (
+                own_player["position"]["x"] - retreat * threat_inverse
+            )
+            target["position"]["y"] = (
+                own_player["position"]["y"] - retreat * threat_slope
+            )
+        elif (
+            threat["position"]["x"] < own_player["position"]["x"]
+            and threat["position"]["y"] < own_player["position"]["y"]
+        ):
+            target["position"]["x"] = (
+                own_player["position"]["x"] + retreat * threat_inverse
+            )
+            target["position"]["y"] = (
+                own_player["position"]["y"] + retreat * threat_slope
+            )
+        elif (
+            threat["position"]["x"] > own_player["position"]["x"]
+            and threat["position"]["y"] < own_player["position"]["y"]
+        ):
+            target["position"]["x"] = (
+                own_player["position"]["x"] - retreat * threat_inverse
+            )
+            target["position"]["y"] = (
+                own_player["position"]["y"] + retreat * threat_slope
+            )
+        elif (
+            threat["position"]["x"] < own_player["position"]["x"]
+            and threat["position"]["y"] > own_player["position"]["y"]
+        ):
+            target["position"]["x"] = (
+                own_player["position"]["x"] + retreat * threat_inverse
+            )
+            target["position"]["y"] = (
+                own_player["position"]["y"] - retreat * threat_slope
+            )
+    return target
+
+
 def avoid_collisions(own_player, target, threats):
     nearby_threats = []
     for threat in threats:
@@ -324,7 +371,7 @@ def avoid_collisions(own_player, target, threats):
             buffer = 200
             threat_slope = slope(own_player["position"], threat["position"])
             target_slope = slope(own_player["position"], target["position"])
-            threat_inverse = (1 / threat_slope) * buffer
+            threat_inverse = (1 / threat_slope)
             if (
                 target["position"]["x"] > threat["position"]["x"]
                 and threat["position"]["x"] > own_player["position"]["x"]
@@ -334,28 +381,28 @@ def avoid_collisions(own_player, target, threats):
                     and threat["position"]["y"] > own_player["position"]["y"]
                 ):
                     if threat_slope > target_slope:
-                        target["position"]["x"] = own_player["position"]["x"] + buffer
+                        target["position"]["x"] = own_player["position"]["x"] + buffer * threat_inverse
                         target["position"]["y"] = (
-                            own_player["position"]["y"] - threat_inverse
+                            own_player["position"]["y"] - buffer * threat_slope
                         )
                     else:
                         target["position"]["x"] = (
-                            own_player["position"]["x"] - threat_inverse
+                            own_player["position"]["x"] - buffer * threat_slope
                         )
-                        target["position"]["y"] = own_player["position"]["y"] + buffer
+                        target["position"]["y"] = own_player["position"]["y"] + buffer * threat_inverse
                 elif (
                     target["position"]["y"] < threat["position"]["y"]
                     and threat["position"]["y"] < own_player["position"]["y"]
                 ):
                     if threat_slope > target_slope:
                         target["position"]["x"] = (
-                            own_player["position"]["x"] - threat_inverse
+                            own_player["position"]["x"] - buffer * threat_slope
                         )
-                        target["position"]["y"] = own_player["position"]["y"] - buffer
+                        target["position"]["y"] = own_player["position"]["y"] - buffer * threat_inverse
                     else:
-                        target["position"]["x"] = own_player["position"]["x"] + buffer
+                        target["position"]["x"] = own_player["position"]["x"] + buffer * threat_inverse
                         target["position"]["y"] = (
-                            own_player["position"]["y"] + threat_inverse
+                            own_player["position"]["y"] + buffer * threat_slope
                         )
             elif (
                 target["position"]["x"] < threat["position"]["x"]
@@ -367,28 +414,28 @@ def avoid_collisions(own_player, target, threats):
                 ):
                     if threat_slope > target_slope:
                         target["position"]["x"] = (
-                            own_player["position"]["x"] + threat_inverse
+                            own_player["position"]["x"] + buffer * threat_slope
                         )
-                        target["position"]["y"] = own_player["position"]["y"] + buffer
+                        target["position"]["y"] = own_player["position"]["y"] + buffer * threat_inverse
                     else:
-                        target["position"]["x"] = own_player["position"]["x"] - buffer
+                        target["position"]["x"] = own_player["position"]["x"] - buffer * threat_inverse
                         target["position"]["y"] = (
-                            own_player["position"]["y"] - threat_inverse
+                            own_player["position"]["y"] - buffer * threat_slope
                         )
                 elif (
                     target["position"]["y"] < threat["position"]["y"]
                     and threat["position"]["y"] < own_player["position"]["y"]
                 ):
                     if threat_slope > target_slope:
-                        target["position"]["x"] = own_player["position"]["x"] - buffer
+                        target["position"]["x"] = own_player["position"]["x"] - buffer * threat_inverse
                         target["position"]["y"] = (
-                            own_player["position"]["y"] + threat_inverse
+                            own_player["position"]["y"] + buffer * threat_slope
                         )
                     else:
                         target["position"]["x"] = (
-                            own_player["position"]["x"] + threat_inverse
+                            own_player["position"]["x"] + buffer * threat_slope
                         )
-                        target["position"]["y"] = own_player["position"]["y"] - buffer
+                        target["position"]["y"] = own_player["position"]["y"] - buffer * threat_inverse
 
     if len(own_player["collisions"]) > 0:
         for collision in own_player["collisions"]:
@@ -406,6 +453,7 @@ def avoid_collisions(own_player, target, threats):
                 target["position"]["y"] = own_player["position"]["y"] + random.randint(
                     -400, 400
                 )
+                break
 
     return target
 
@@ -422,9 +470,7 @@ def assess_bomb_use(own_player, target, enemies, moves):
             and target["id"] != enemy["id"]
         ):
             moves.append("special")
-            break
-
-        if (
+        elif (
             target["position"]["x"] < own_player["position"]["x"]
             and own_player["position"]["x"] < enemy["position"]["x"]
             and target["position"]["y"] < own_player["position"]["y"]
@@ -433,9 +479,7 @@ def assess_bomb_use(own_player, target, enemies, moves):
             and target["id"] != enemy["id"]
         ):
             moves.append("special")
-            break
-
-        if (
+        elif (
             target["position"]["x"] < own_player["position"]["x"]
             and own_player["position"]["x"] < enemy["position"]["x"]
             and target["position"]["y"] > own_player["position"]["y"]
@@ -444,9 +488,7 @@ def assess_bomb_use(own_player, target, enemies, moves):
             and target["id"] != enemy["id"]
         ):
             moves.append("special")
-            break
-
-        if (
+        elif (
             target["position"]["x"] > own_player["position"]["x"]
             and own_player["position"]["x"] > enemy["position"]["x"]
             and target["position"]["y"] < own_player["position"]["y"]
@@ -455,16 +497,13 @@ def assess_bomb_use(own_player, target, enemies, moves):
             and target["id"] != enemy["id"]
         ):
             moves.append("special")
-            break
-
-        if (
+        elif (
             enemy["distance"] < 50000
             and own_player["health"] > own_player["attack_damage"] * 2.5
             and target["id"] == enemy["id"]
             and target["health"] > own_player["attack_damage"]
         ):
             moves.append("special")
-            break
     return moves
 
 
@@ -472,7 +511,7 @@ def assess_icicle_use(own_player, target, moves):
     if (
         target["type"] in ["wolf", "ghoul", "tiny", "minotaur", "player"]
         and not target["is_frozen"]
-        and target["distance"] < 225000
+        and target["distance"] < 220000
     ):
         moves.append("special")
 
@@ -484,7 +523,6 @@ def assess_icicle_use(own_player, target, moves):
                 "tiny",
                 "minotaur",
                 "player",
-                "chest",
             ]:
                 moves.append("special")
 
@@ -813,13 +851,12 @@ def play(level_data: LevelData):
     message = f'{target["type"]}: {target["xp"]}'
     moves.append({"speak": message})
 
-    bomb = bomb_nearby(own_player, hazards)
     total_danger_value = total_danger(players, enemies, hazards)
-
     moves = assess_health_needs(own_player, total_danger_value, moves)
     moves = assess_attack(own_player, target, moves)
     moves = assess_zapper_use(target, moves)
 
+    bomb = bomb_nearby(own_player, hazards)
     # Handle special equipped logic
     if own_player["special_equipped"] == "bomb":
         # Check for enemies
@@ -829,15 +866,15 @@ def play(level_data: LevelData):
     elif own_player["special_equipped"] == "freeze":
         moves = assess_icicle_use(own_player, target, moves)
     elif own_player["special_equipped"] == "shockwave":
-        if len(own_player["items"]["big_potions"]) == 0 or bomb:
+        if bomb:
             moves.append("special")
         elif peripheral_danger(own_player, own_player, enemies, players, hazards):
             moves.append("shield")
             moves.append("special")
 
     moves = handle_icicle_threat(own_player, hazards, moves)
-    target = avoid_collisions(own_player, target, threats)
     moves, target = handle_bomb_threat(own_player, target, bomb, moves)
+    target = avoid_collisions(own_player, target, threats)
 
     # Final move to the target
     if len(own_player["items"]["big_potions"]) == 0 or bomb:
@@ -866,7 +903,11 @@ def play(level_data: LevelData):
             if threat["distance"] < min_distance:
                 min_threat = threat
 
-        if min_threat["id"] != target["id"] and min_threat["distance"] < 30000:
+        if (
+            min_threat
+            and min_threat["id"] != target["id"]
+            and min_threat["distance"] < 40000
+        ):
             threat_pos = [threat["position"]["x"], threat["position"]["y"]]
             steering_force += agent.avoid_obstacle(threat_pos, radii[threat["type"]])
 
@@ -876,7 +917,7 @@ def play(level_data: LevelData):
             if obstacle["distance"] < min_distance:
                 min_obs = obstacle
 
-        if min_obs["distance"] < 30000:
+        if min_obs["distance"] < 20000:
             obs_pos = [min_obs["position"]["x"], min_obs["position"]["y"]]
             steering_force += agent.avoid_obstacle(obs_pos, radii["obstacle"])
 
@@ -889,10 +930,6 @@ def play(level_data: LevelData):
     else:
         moves.append({"move_to": target["position"]})
 
-    # added_health = 0
-    # for move in moves:
-    #     if move == {"use": "big_potion"}:
-    #         added_health += 100
     return moves
 
 
