@@ -72,7 +72,10 @@ def calculate_zapper_value(own_player):
 def peripheral_danger(
     own_player: dict, item: dict, enemies: list, players: list, hazards: list
 ) -> bool:
-    total_health = own_player["health"] + len(own_player["items"]["big_potions"]) * 100
+    total_health = (
+        own_player["health"]
+        + len(own_player["items"]["big_potions"]) * own_player["max_health"]
+    )
     total_danger = 0
 
     for enemy in enemies:
@@ -247,14 +250,11 @@ def assess_attack(own_player, target, moves):
 
 def assess_health_needs(own_player, total_danger_value, moves):
     # Handle health and potion usage
-    if total_danger_value > own_player["health"] * 1.2:
+    if total_danger_value >= own_player["health"] * 1.2:
         moves.append({"use": "big_potion"})
         if not own_player["is_cloaked"]:
             moves.append({"use": "ring"})
-        if own_player["health"] + 100 >= own_player["max_health"]:
-            return moves
-
-    if own_player["health"] / own_player["max_health"] < 0.4:
+    elif own_player["health"] / own_player["max_health"] < 0.4:
         moves.append("shield")
         moves.append({"use": "big_potion"})
         moves.append("dash")
@@ -371,7 +371,7 @@ def avoid_collisions(own_player, target, threats):
             buffer = 200
             threat_slope = slope(own_player["position"], threat["position"])
             target_slope = slope(own_player["position"], target["position"])
-            threat_inverse = (1 / threat_slope)
+            threat_inverse = 1 / (threat_slope or 1)
             if (
                 target["position"]["x"] > threat["position"]["x"]
                 and threat["position"]["x"] > own_player["position"]["x"]
@@ -381,26 +381,34 @@ def avoid_collisions(own_player, target, threats):
                     and threat["position"]["y"] > own_player["position"]["y"]
                 ):
                     if threat_slope > target_slope:
-                        target["position"]["x"] = own_player["position"]["x"] + buffer * threat_inverse
+                        target["position"]["x"] = (
+                            own_player["position"]["x"] + buffer * threat_inverse
+                        )
                         target["position"]["y"] = (
                             own_player["position"]["y"] - buffer * threat_slope
                         )
                     else:
                         target["position"]["x"] = (
-                            own_player["position"]["x"] - buffer * threat_slope
+                            own_player["position"]["x"] - buffer * threat_inverse
                         )
-                        target["position"]["y"] = own_player["position"]["y"] + buffer * threat_inverse
+                        target["position"]["y"] = (
+                            own_player["position"]["y"] + buffer * threat_slope
+                        )
                 elif (
                     target["position"]["y"] < threat["position"]["y"]
                     and threat["position"]["y"] < own_player["position"]["y"]
                 ):
                     if threat_slope > target_slope:
                         target["position"]["x"] = (
-                            own_player["position"]["x"] - buffer * threat_slope
+                            own_player["position"]["x"] - buffer * threat_inverse
                         )
-                        target["position"]["y"] = own_player["position"]["y"] - buffer * threat_inverse
+                        target["position"]["y"] = (
+                            own_player["position"]["y"] - buffer * threat_slope
+                        )
                     else:
-                        target["position"]["x"] = own_player["position"]["x"] + buffer * threat_inverse
+                        target["position"]["x"] = (
+                            own_player["position"]["x"] + buffer * threat_inverse
+                        )
                         target["position"]["y"] = (
                             own_player["position"]["y"] + buffer * threat_slope
                         )
@@ -414,11 +422,15 @@ def avoid_collisions(own_player, target, threats):
                 ):
                     if threat_slope > target_slope:
                         target["position"]["x"] = (
-                            own_player["position"]["x"] + buffer * threat_slope
+                            own_player["position"]["x"] + buffer * threat_inverse
                         )
-                        target["position"]["y"] = own_player["position"]["y"] + buffer * threat_inverse
+                        target["position"]["y"] = (
+                            own_player["position"]["y"] + buffer * threat_slope
+                        )
                     else:
-                        target["position"]["x"] = own_player["position"]["x"] - buffer * threat_inverse
+                        target["position"]["x"] = (
+                            own_player["position"]["x"] - buffer * threat_inverse
+                        )
                         target["position"]["y"] = (
                             own_player["position"]["y"] - buffer * threat_slope
                         )
@@ -427,15 +439,19 @@ def avoid_collisions(own_player, target, threats):
                     and threat["position"]["y"] < own_player["position"]["y"]
                 ):
                     if threat_slope > target_slope:
-                        target["position"]["x"] = own_player["position"]["x"] - buffer * threat_inverse
+                        target["position"]["x"] = (
+                            own_player["position"]["x"] - buffer * threat_inverse
+                        )
                         target["position"]["y"] = (
                             own_player["position"]["y"] + buffer * threat_slope
                         )
                     else:
                         target["position"]["x"] = (
-                            own_player["position"]["x"] + buffer * threat_slope
+                            own_player["position"]["x"] + buffer * threat_inverse
                         )
-                        target["position"]["y"] = own_player["position"]["y"] - buffer * threat_inverse
+                        target["position"]["y"] = (
+                            own_player["position"]["y"] - buffer * threat_slope
+                        )
 
     if len(own_player["collisions"]) > 0:
         for collision in own_player["collisions"]:
@@ -461,6 +477,7 @@ def avoid_collisions(own_player, target, threats):
 def assess_bomb_use(own_player, target, enemies, moves):
     bomb_distance = 130000
     for enemy in enemies:
+        # and enemy["direction"] == own_player["direction"] ???
         if (
             target["position"]["x"] > own_player["position"]["x"]
             and own_player["position"]["x"] > enemy["position"]["x"]
@@ -605,7 +622,7 @@ def apply_metadata(own_player, items):
             "special_equipped"
         ] not in [
             "bomb",
-            # "freeze",
+            "freeze",
         ]:
             exps["chest"] = 1500
             exps["power_up"] = 1500
@@ -877,7 +894,7 @@ def play(level_data: LevelData):
     target = avoid_collisions(own_player, target, threats)
 
     # Final move to the target
-    if len(own_player["items"]["big_potions"]) == 0 or bomb:
+    if target.get("health"):
         position = [own_player["position"]["x"], own_player["position"]["y"]]
         velocity = [0, 0]
         max_speed = 1000
@@ -927,6 +944,19 @@ def play(level_data: LevelData):
         own_player["position"]["x"] = agent.position[0]
         own_player["position"]["y"] = agent.position[1]
         moves.append({"move_to": own_player["position"]})
+    elif len(own_player["items"]["big_potions"]) == 0 or bomb:
+        min_distance = float("inf")
+        min_threat = {}
+        for threat in threats:
+            if threat["distance"] < min_distance:
+                min_threat = threat
+        if (
+            min_threat
+            and min_threat["id"] != target["id"]
+            and min_threat["distance"] < 40000
+        ):
+            target = retreat(own_player, target, threats)
+        moves.append({"move_to": target["position"]})
     else:
         moves.append({"move_to": target["position"]})
 
